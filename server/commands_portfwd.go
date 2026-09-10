@@ -155,7 +155,7 @@ func (c *PortFwdCommand) Run(ctx *ExecutionContext, args []string) error {
 		}
 	} else {
 		// Remote Strategy
-		key := fmt.Sprintf("portfwd:%d:%v", uSess.GatewayID, uSess.Path)
+		key := uSess.stateKey(remoteStatePortForward)
 		svr.remoteSessionsMutex.Lock()
 		if _, ok := svr.remoteSessions[key]; !ok {
 			svr.remoteSessions[key] = &RemoteSessionState{}

@@ -8,6 +8,7 @@ import (
 	"net/http"
 	"os"
 	"strings"
+	"sync/atomic"
 
 	"slider/pkg/listener"
 	"slider/pkg/session"
@@ -67,7 +68,9 @@ func (s *server) handleWebSocketConsole(w http.ResponseWriter, r *http.Request) 
 
 	done := make(chan struct{})
 	defer close(done)
-	go bridgeWebSocketToPTY(wsConn, ptyMaster, webConsole, done)
+	var currentConsole atomic.Pointer[Console]
+	currentConsole.Store(webConsole)
+	go bridgeWebSocketToPTY(wsConn, ptyMaster, &currentConsole, done)
 	go bridgePTYToWebSocket(ptyMaster, wsConn, done)
 
 	s.consoleBanner(webConsole)
@@ -77,9 +80,12 @@ func (s *server) handleWebSocketConsole(w http.ResponseWriter, r *http.Request) 
 			if err != io.EOF {
 				webConsole.PrintError("Failed to read input: %s", err)
 			}
-			if webConsole, err = s.newWebConsole(ptyTTY, history); err != nil {
-				return err
+			replacement, replacementErr := s.newWebConsole(ptyTTY, history)
+			if replacementErr != nil {
+				return replacementErr
 			}
+			webConsole = replacement
+			currentConsole.Store(webConsole)
 			_, _ = webConsole.Term.Write([]byte("\r\n"))
 			continue
 		}
@@ -109,7 +115,7 @@ func (s *server) handleWebSocketConsole(w http.ResponseWriter, r *http.Request) 
 func bridgeWebSocketToPTY(
 	conn *websocket.Conn,
 	ptyMaster *os.File,
-	console *Console,
+	currentConsole *atomic.Pointer[Console],
 	done <-chan struct{},
 ) {
 	defer func() { _ = ptyMaster.Close() }()
@@ -122,7 +128,8 @@ func bridgeWebSocketToPTY(
 			if err != nil {
 				return
 			}
-			if messageType == websocket.TextMessage && handleResizeMessage(message, ptyMaster, console) {
+			if messageType == websocket.TextMessage &&
+				handleCurrentConsoleResize(message, ptyMaster, currentConsole) {
 				continue
 			}
 			if _, err := ptyMaster.Write(message); err != nil {
@@ -130,6 +137,14 @@ func bridgeWebSocketToPTY(
 			}
 		}
 	}
+}
+
+func handleCurrentConsoleResize(
+	message []byte,
+	ptyMaster *os.File,
+	currentConsole *atomic.Pointer[Console],
+) bool {
+	return handleResizeMessage(message, ptyMaster, currentConsole.Load())
 }
 
 func handleResizeMessage(message []byte, ptyMaster *os.File, console *Console) bool {
@@ -143,6 +158,9 @@ func handleResizeMessage(message []byte, ptyMaster *os.File, console *Console) b
 		Rows uint16 `json:"rows"`
 	}
 	if err := json.Unmarshal(message, &resize); err != nil {
+		return true
+	}
+	if console == nil {
 		return true
 	}
 

@@ -18,6 +18,11 @@ var (
 	activeCount    int64 // Active session count
 )
 
+// ReserveSessionID allocates an ID from the process-wide session namespace.
+func ReserveSessionID() int64 {
+	return atomic.AddInt64(&sessionCounter, 1)
+}
+
 // NewClientToServerSession creates a new session for a client connecting to a server (AgentRole)
 func NewClientToServerSession(
 	logger *slog.Logger,
@@ -26,7 +31,7 @@ func NewClientToServerSession(
 	localInterp *interpreter.Interpreter,
 	serverAddr string,
 ) *BidirectionalSession {
-	id := atomic.AddInt64(&sessionCounter, 1)
+	id := ReserveSessionID()
 	atomic.AddInt64(&activeCount, 1)
 
 	logger.DebugWith("Creating client session",
@@ -75,7 +80,7 @@ func NewServerFromClientSession(
 	hostIP string,
 	opts *ServerSessionOptions,
 ) *BidirectionalSession {
-	id := atomic.AddInt64(&sessionCounter, 1)
+	id := ReserveSessionID()
 	atomic.AddInt64(&activeCount, 1)
 
 	logger.InfoWith("Creating server session",
@@ -148,7 +153,7 @@ func NewServerToServerSession(
 	hostIP string,
 	opts *ServerSessionOptions,
 ) *BidirectionalSession {
-	id := atomic.AddInt64(&sessionCounter, 1)
+	id := ReserveSessionID()
 	atomic.AddInt64(&activeCount, 1)
 
 	logger.InfoWith("Creating server-to-server session",
@@ -218,7 +223,7 @@ func NewServerToListenerSession(
 	hostIP string,
 	opts *ServerSessionOptions,
 ) *BidirectionalSession {
-	id := atomic.AddInt64(&sessionCounter, 1)
+	id := ReserveSessionID()
 	atomic.AddInt64(&activeCount, 1)
 
 	logger.InfoWith("Creating server-to-listener session",
@@ -367,7 +372,7 @@ func GetActiveCount() int64 {
 	return atomic.LoadInt64(&activeCount)
 }
 
-// GetTotalCount returns the total number of sessions created
+// GetTotalCount returns the total number of IDs allocated.
 func GetTotalCount() int64 {
 	return atomic.LoadInt64(&sessionCounter)
 }

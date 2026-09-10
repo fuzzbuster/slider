@@ -1,10 +1,12 @@
 package server
 
 import (
+	"encoding/json"
 	"errors"
 	"fmt"
 
 	"slider/pkg/conf"
+	"slider/pkg/types"
 
 	"github.com/spf13/pflag"
 )
@@ -74,7 +76,14 @@ func (c *SessionsCommand) Run(ctx *ExecutionContext, args []string) error {
 }
 
 func (s *server) disconnectSession(ui UserInterface, sessionID int) error {
-	sess, err := s.GetSession(sessionID)
+	unified, ok := s.ResolveUnifiedSessions()[int64(sessionID)]
+	if !ok {
+		return fmt.Errorf("unknown session ID %d", sessionID)
+	}
+	if unified.GatewayID != 0 {
+		return fmt.Errorf("remote sessions cannot be disconnected; use --kill to terminate session %d", sessionID)
+	}
+	sess, err := s.GetSession(int(unified.ActualID))
 	if err != nil {
 		return fmt.Errorf("unknown session ID %d", sessionID)
 	}
@@ -86,13 +95,49 @@ func (s *server) disconnectSession(ui UserInterface, sessionID int) error {
 }
 
 func (s *server) killSession(ui UserInterface, sessionID int) error {
-	sess, err := s.GetSession(sessionID)
-	if err != nil {
+	unified, ok := s.ResolveUnifiedSessions()[int64(sessionID)]
+	if !ok {
 		return fmt.Errorf("unknown session ID %d", sessionID)
 	}
-	if _, _, err := sess.SendRequest(conf.SSHRequestShutdown, true, nil); err != nil {
+	if unified.GatewayID == 0 {
+		sess, err := s.GetSession(int(unified.ActualID))
+		if err != nil {
+			return fmt.Errorf("unknown session ID %d", sessionID)
+		}
+		if _, _, err := sess.SendRequest(conf.SSHRequestShutdown, true, nil); err != nil {
+			return fmt.Errorf("client did not answer properly to the request: %w", err)
+		}
+	} else if err := s.killRemoteSession(unified); err != nil {
 		return fmt.Errorf("client did not answer properly to the request: %w", err)
 	}
 	ui.PrintSuccess("SessionID %d terminated gracefully", sessionID)
+	return nil
+}
+
+func (s *server) killRemoteSession(unified UnifiedSession) error {
+	gatewaySession, err := s.GetSession(int(unified.GatewayID))
+	if err != nil {
+		return fmt.Errorf("gateway session %d not found", unified.GatewayID)
+	}
+	target := append([]int64(nil), unified.Path...)
+	target = append(target, unified.ActualID)
+	payload, err := json.Marshal(types.ForwardRequestPayload{
+		Target:  target,
+		ReqType: conf.SSHRequestShutdown,
+	})
+	if err != nil {
+		return err
+	}
+	ok, _, err := gatewaySession.SendRequest(
+		conf.SSHRequestSliderTCPIPForward,
+		true,
+		payload,
+	)
+	if err != nil {
+		return err
+	}
+	if !ok {
+		return fmt.Errorf("remote session rejected shutdown request")
+	}
 	return nil
 }

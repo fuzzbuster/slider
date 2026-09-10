@@ -18,7 +18,7 @@ func (c *ShellCommand) handleRemoteShellKill(
 	ui UserInterface,
 	killSessionID int,
 ) error {
-	key := fmt.Sprintf("shell:%d:%v", unified.GatewayID, unified.Path)
+	key := unified.stateKey(remoteStateShell)
 
 	s.remoteSessionsMutex.Lock()
 	state, exists := s.remoteSessions[key]
@@ -94,7 +94,7 @@ func (c *ShellCommand) handleRemoteShell(
 	expose bool,
 	useAltShell bool,
 ) error {
-	key := fmt.Sprintf("shell:%d:%v", unified.GatewayID, unified.Path)
+	key := unified.stateKey(remoteStateShell)
 
 	s.remoteSessionsMutex.Lock()
 	if _, ok := s.remoteSessions[key]; !ok {

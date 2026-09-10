@@ -83,7 +83,7 @@ func (m *Manager) StartRemoteForward(msg types.CustomTcpIpChannelMsg, notifier c
 		DstPort: msg.DstPort,
 		SrcHost: msg.SrcHost,
 		SrcPort: msg.SrcPort,
-	}, false, msg.Protocol)
+	}, false, msg.Protocol, 0)
 
 	control, _ := m.GetRemoteMapping(msg.Protocol, msg.SrcPort)
 	for {
@@ -162,18 +162,18 @@ func (m *Manager) CancelRemoteForward(protocol string, port uint32) error {
 	return nil
 }
 
-// CancelAllSSHRemoteForwards cancels all SSH-initiated remote port forwards.
-func (m *Manager) CancelAllSSHRemoteForwards() {
+// CancelSSHRemoteForwards cancels SSH forwards owned by one endpoint connection.
+func (m *Manager) CancelSSHRemoteForwards(ownerID uint64) {
 	m.mutex.Lock()
 	mappings := make(map[string]*RemoteForward)
 	for key, mapping := range m.remoteMappings {
-		if mapping.IsSshConn {
+		if mapping.IsSshConn && mapping.OwnerID == ownerID {
 			mappings[key] = mapping
 		}
 	}
 	m.mutex.Unlock()
 
-	for _, forward := range mappings {
+	for key, forward := range mappings {
 		payload := ssh.Marshal(&types.TcpIpFwdRequest{
 			BindAddress: forward.SrcHost,
 			BindPort:    forward.SrcPort,
@@ -190,13 +190,19 @@ func (m *Manager) CancelAllSSHRemoteForwards() {
 				slog.F("fwd_host", forward.SrcHost),
 				slog.F("fwd_port", forward.SrcPort),
 				slog.F("err", err))
-			continue
+		} else {
+			m.logger.DebugWith("Cancelled reverse tcp forwarding",
+				slog.F("session_id", m.sessionID),
+				slog.F("request_channel", conf.SSHRequestCancelTcpIpForward),
+				slog.F("fwd_host", forward.SrcHost),
+				slog.F("fwd_port", forward.SrcPort))
 		}
 
-		m.logger.DebugWith("Cancelled reverse tcp forwarding",
-			slog.F("session_id", m.sessionID),
-			slog.F("request_channel", conf.SSHRequestCancelTcpIpForward),
-			slog.F("fwd_host", forward.SrcHost),
-			slog.F("fwd_port", forward.SrcPort))
+		forward.cancel()
+		m.mutex.Lock()
+		if m.remoteMappings[key] == forward {
+			delete(m.remoteMappings, key)
+		}
+		m.mutex.Unlock()
 	}
 }

@@ -185,8 +185,8 @@ func TestInt_SessionListing(t *testing.T) {
 	for _, s := range sessions {
 		ids[s.GetID()] = true
 	}
-	if !ids[1] || !ids[2] {
-		t.Error("Expected sessions 1 and 2 to be present")
+	if !ids[sess1.GetID()] || !ids[sess2.GetID()] {
+		t.Errorf("expected sessions %d and %d to be present", sess1.GetID(), sess2.GetID())
 	}
 }
 

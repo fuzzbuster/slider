@@ -153,7 +153,7 @@ func listSocksSessions(svr *server, ui UserInterface) error {
 		unifiedMap := svr.ResolveUnifiedSessions()
 		for unifiedID, uSess := range unifiedMap {
 			if uSess.GatewayID != 0 { // Remote session
-				socksKey := fmt.Sprintf("socks:%d:%v", uSess.GatewayID, uSess.Path)
+				socksKey := uSess.stateKey(remoteStateSocks)
 				svr.remoteSessionsMutex.Lock()
 				if state, ok := svr.remoteSessions[socksKey]; ok {
 					if state.SocksInstance != nil && state.SocksInstance.IsEnabled() {
@@ -275,7 +275,7 @@ func killSessionSocksServer(svr *server, ui UserInterface, sessionID int) error 
 	}
 
 	// Remote Strategy - kill remote session SOCKS
-	socksKey := fmt.Sprintf("socks:%d:%v", uSess.GatewayID, uSess.Path)
+	socksKey := uSess.stateKey(remoteStateSocks)
 	svr.remoteSessionsMutex.Lock()
 	state, ok := svr.remoteSessions[socksKey]
 	svr.remoteSessionsMutex.Unlock()
@@ -358,7 +358,7 @@ func createSessionSocksServer(svr *server, ui UserInterface, sessionID int, port
 		}
 	} else {
 		// Remote Strategy
-		key := fmt.Sprintf("socks:%d:%v", uSess.GatewayID, uSess.Path)
+		key := uSess.stateKey(remoteStateSocks)
 		svr.remoteSessionsMutex.Lock()
 		if _, ok := svr.remoteSessions[key]; !ok {
 			svr.remoteSessions[key] = &RemoteSessionState{}

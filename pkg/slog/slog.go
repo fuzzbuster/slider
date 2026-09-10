@@ -17,6 +17,7 @@ type LogBuff struct {
 	io.Writer        // Writer to save log in a buffer
 	io.Reader        // Reader to print buffer to stdout
 	buff      []byte // Hold the logs while not using stdout
+	mutex     sync.Mutex
 }
 
 type Logger struct {
@@ -47,12 +48,22 @@ var (
 )
 
 func (lb *LogBuff) Write(p []byte) (int, error) {
+	lb.mutex.Lock()
+	defer lb.mutex.Unlock()
 	lb.buff = append(lb.buff, p...)
 	return len(p), nil
 }
 
 func (lb *LogBuff) Read(p []byte) (int, error) {
 	return len(p), nil
+}
+
+func (lb *LogBuff) drain() []byte {
+	lb.mutex.Lock()
+	defer lb.mutex.Unlock()
+	buffered := lb.buff
+	lb.buff = nil
+	return buffered
 }
 
 func NewLogger(prefix string) *Logger {
@@ -145,10 +156,10 @@ func (l *Logger) LogToStdout() {
 }
 
 func (l *Logger) BufferOut() {
-	fmt.Printf("%s", l.logBuff.buff)
 	l.Lock()
-	l.logBuff.buff = make([]byte, 0)
+	l.logger.SetOutput(os.Stdout)
 	l.Unlock()
+	_, _ = os.Stdout.Write(l.logBuff.drain())
 }
 
 func (l *Logger) Printf(t string, args ...any) {

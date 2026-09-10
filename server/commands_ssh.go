@@ -142,7 +142,7 @@ func (c *SSHCommand) Run(ctx *ExecutionContext, args []string) error {
 		}
 	} else {
 		// Remote Strategy
-		key := fmt.Sprintf("ssh:%d:%v", uSess.GatewayID, uSess.Path)
+		key := uSess.stateKey(remoteStateSSH)
 		svr.remoteSessionsMutex.Lock()
 		if _, ok := svr.remoteSessions[key]; !ok {
 			svr.remoteSessions[key] = &RemoteSessionState{}

@@ -141,7 +141,7 @@ func (s *server) remoteSessionListState(
 	}
 	state.connection = unified.ConnectionAddr
 
-	sshKey := fmt.Sprintf("ssh:%d:%v", unified.GatewayID, unified.Path)
+	sshKey := unified.stateKey(remoteStateSSH)
 	s.remoteSessionsMutex.Lock()
 	if remoteState, ok := s.remoteSessions[sshKey]; ok {
 		if remoteState.SSHInstance != nil && remoteState.SSHInstance.IsEnabled() {
@@ -152,7 +152,7 @@ func (s *server) remoteSessionListState(
 	}
 	s.remoteSessionsMutex.Unlock()
 
-	shellKey := fmt.Sprintf("shell:%d:%v", unified.GatewayID, unified.Path)
+	shellKey := unified.stateKey(remoteStateShell)
 	s.remoteSessionsMutex.Lock()
 	if remoteState, ok := s.remoteSessions[shellKey]; ok {
 		if remoteState.ShellInstance != nil && remoteState.ShellInstance.IsEnabled() {

@@ -63,8 +63,10 @@ type server struct {
 	CertificateAuthority *scrypt.CertificateAuthority
 	customProto          string
 	commandRegistry      *CommandRegistry
-	remoteSessions       map[string]*RemoteSessionState
+	remoteSessions       map[remoteStateKey]*RemoteSessionState
 	remoteSessionsMutex  sync.Mutex
+	unifiedSessionIDs    map[SessionKey]int64
+	unifiedSessionMutex  sync.Mutex
 	localSocks           LocalSocksServer // Local SOCKS server state
 }
 

@@ -6,6 +6,7 @@ import (
 	"io"
 	"net"
 	"sync"
+	"sync/atomic"
 
 	"slider/pkg/conf"
 	"slider/pkg/instance/portforward"
@@ -46,7 +47,13 @@ type Service struct {
 	opener             ChannelOpener
 	portFwdManager     *portforward.Manager
 	mutex              sync.RWMutex
+	connectionCounter  atomic.Uint64
 }
+
+const (
+	maxPendingEnvRequests = 128
+	maxPendingEnvBytes    = 64 * 1024
+)
 
 func NewService(cfg *Config) *Service {
 	return &Service{
@@ -110,16 +117,17 @@ func (s *Service) Serve(conn net.Conn) error {
 	if err != nil {
 		return fmt.Errorf("SSH handshake failed: %w", err)
 	}
+	ownerID := s.connectionCounter.Add(1)
 	defer func() {
 		_ = serverConn.Close()
 		if s.portFwdManager != nil {
-			s.portFwdManager.CancelAllSSHRemoteForwards()
+			s.portFwdManager.CancelSSHRemoteForwards(ownerID)
 		}
 	}()
 
-	go s.handleGlobalRequests(serverConn, requests)
+	go s.handleGlobalRequests(serverConn, requests, ownerID)
 	for channel := range channels {
-		go s.handleChannel(serverConn, channel)
+		go s.handleChannel(serverConn, channel, ownerID)
 	}
 	return nil
 }
@@ -131,7 +139,11 @@ func (s *Service) Close() error {
 	return nil
 }
 
-func (s *Service) handleGlobalRequests(serverConn *ssh.ServerConn, requests <-chan *ssh.Request) {
+func (s *Service) handleGlobalRequests(
+	serverConn *ssh.ServerConn,
+	requests <-chan *ssh.Request,
+	ownerID uint64,
+) {
 	for request := range requests {
 		switch request.Type {
 		case conf.SSHRequestKeepAlive:
@@ -143,26 +155,30 @@ func (s *Service) handleGlobalRequests(serverConn *ssh.ServerConn, requests <-ch
 				s.rejectRequest(request)
 				continue
 			}
-			go s.portFwdManager.HandleTCPIPForwardRequest(request, serverConn)
+			go s.portFwdManager.HandleTCPIPForwardRequest(request, serverConn, ownerID)
 		case conf.SSHRequestCancelTcpIpForward:
 			if s.portFwdManager == nil {
 				s.rejectRequest(request)
 				continue
 			}
-			s.portFwdManager.HandleCancelTCPIPForwardRequest(request)
+			s.portFwdManager.HandleCancelTCPIPForwardRequest(request, ownerID)
 		case conf.SSHRequestSliderUDPForward:
 			if s.portFwdManager == nil {
 				s.rejectRequest(request)
 				continue
 			}
-			go s.portFwdManager.HandleUDPForwardRequest(request, serverConn)
+			go s.portFwdManager.HandleUDPForwardRequest(request, serverConn, ownerID)
 		default:
 			s.rejectRequest(request)
 		}
 	}
 }
 
-func (s *Service) handleChannel(serverConn *ssh.ServerConn, newChannel ssh.NewChannel) {
+func (s *Service) handleChannel(
+	serverConn *ssh.ServerConn,
+	newChannel ssh.NewChannel,
+	ownerID uint64,
+) {
 	var err error
 	switch newChannel.ChannelType() {
 	case conf.SSHChannelSession:
@@ -170,7 +186,7 @@ func (s *Service) handleChannel(serverConn *ssh.ServerConn, newChannel ssh.NewCh
 		var requests <-chan *ssh.Request
 		channel, requests, err = newChannel.Accept()
 		if err == nil {
-			s.handleSessionRequests(serverConn, channel, requests)
+			s.handleSessionRequests(serverConn, channel, requests, ownerID)
 		}
 	case conf.SSHChannelDirectTCPIP, conf.SSHChannelForwardedTCPIP:
 		if s.portFwdManager == nil {
@@ -207,6 +223,7 @@ func (s *Service) handleSessionRequests(
 	serverConn *ssh.ServerConn,
 	clientChannel ssh.Channel,
 	requests <-chan *ssh.Request,
+	ownerID uint64,
 ) {
 	defer func() { _ = clientChannel.Close() }()
 
@@ -218,6 +235,8 @@ func (s *Service) handleSessionRequests(
 	externalPtyRequested := false
 	started := false
 	var pendingEnv [][]byte
+	pendingEnvBytes := 0
+	var pendingWindow []byte
 	for request := range requests {
 		ok := false
 		switch request.Type {
@@ -228,12 +247,11 @@ func (s *Service) handleSessionRequests(
 				s.sendInitTermSize(request.Payload)
 			}
 		case conf.SSHRequestEnv:
-			ok = true
 			if started {
-				envChange <- request.Payload
-			} else {
-				pendingEnv = append(pendingEnv, request.Payload)
+				ok = tryEnqueuePayload(envChange, request.Payload)
+				break
 			}
+			ok = appendPendingEnv(&pendingEnv, &pendingEnvBytes, request.Payload)
 		case conf.SSHRequestShell, conf.SSHRequestExec:
 			if started {
 				break
@@ -241,8 +259,14 @@ func (s *Service) handleSessionRequests(
 			ok = true
 			started = true
 			initialEnv := append([][]byte(nil), pendingEnv...)
+			pendingEnv = nil
+			pendingEnvBytes = 0
 			for _, envVar := range s.getEnvVars(externalPtyRequested) {
 				initialEnv = append(initialEnv, ssh.Marshal(envVar))
+			}
+			if pendingWindow != nil {
+				winChange <- pendingWindow
+				pendingWindow = nil
 			}
 			go s.interactiveChannelPipe(
 				clientChannel,
@@ -255,27 +279,35 @@ func (s *Service) handleSessionRequests(
 		case conf.SSHRequestWindowChange:
 			if s.isPtyOn() {
 				ok = true
+				if started {
+					enqueueLatestPayload(winChange, request.Payload)
+				} else {
+					pendingWindow = append(pendingWindow[:0], request.Payload...)
+				}
 			}
-			winChange <- request.Payload
 		case conf.SSHRequestSubsystem:
 			subsystem, err := types.ParseSSHString(request.Payload)
-			if err == nil && subsystem == conf.SSHChannelSFTP {
+			if !started && err == nil && subsystem == conf.SSHChannelSFTP {
 				ok = true
+				started = true
+				pendingEnv = nil
+				pendingEnvBytes = 0
+				pendingWindow = nil
 				go s.channelPipe(clientChannel, conf.SSHChannelSFTP, nil)
 			}
 		case conf.SSHRequestTcpIpForward, conf.SSHRequestSliderTCPIPForward:
 			if s.portFwdManager != nil {
-				go s.portFwdManager.HandleTCPIPForwardRequest(request, serverConn)
+				go s.portFwdManager.HandleTCPIPForwardRequest(request, serverConn, ownerID)
 				continue
 			}
 		case conf.SSHRequestCancelTcpIpForward:
 			if s.portFwdManager != nil {
-				s.portFwdManager.HandleCancelTCPIPForwardRequest(request)
+				s.portFwdManager.HandleCancelTCPIPForwardRequest(request, ownerID)
 				continue
 			}
 		case conf.SSHRequestSliderUDPForward:
 			if s.portFwdManager != nil {
-				go s.portFwdManager.HandleUDPForwardRequest(request, serverConn)
+				go s.portFwdManager.HandleUDPForwardRequest(request, serverConn, ownerID)
 				continue
 			}
 		case conf.SSHRequestKeepAlive:
@@ -286,6 +318,38 @@ func (s *Service) handleSessionRequests(
 			_ = request.Reply(ok, nil)
 		}
 	}
+}
+
+func appendPendingEnv(pending *[][]byte, totalBytes *int, payload []byte) bool {
+	if len(*pending) >= maxPendingEnvRequests ||
+		*totalBytes+len(payload) > maxPendingEnvBytes {
+		return false
+	}
+	copyPayload := append([]byte(nil), payload...)
+	*pending = append(*pending, copyPayload)
+	*totalBytes += len(copyPayload)
+	return true
+}
+
+func tryEnqueuePayload(target chan<- []byte, payload []byte) bool {
+	copyPayload := append([]byte(nil), payload...)
+	select {
+	case target <- copyPayload:
+		return true
+	default:
+		return false
+	}
+}
+
+func enqueueLatestPayload(target chan []byte, payload []byte) {
+	if tryEnqueuePayload(target, payload) {
+		return
+	}
+	select {
+	case <-target:
+	default:
+	}
+	_ = tryEnqueuePayload(target, payload)
 }
 
 func (s *Service) rejectRequest(request *ssh.Request) {

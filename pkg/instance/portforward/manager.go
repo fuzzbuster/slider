@@ -31,6 +31,7 @@ type ChannelOpener interface {
 type RemoteForward struct {
 	RcvChan    chan *types.CustomTcpIpChannelMsg
 	CancelChan chan struct{}
+	OwnerID    uint64
 	cancelOnce sync.Once
 	*types.CustomTcpIpChannelMsg
 }
@@ -69,6 +70,7 @@ func (m *Manager) AddRemoteForward(
 	message *types.TcpIpChannelMsg,
 	isSSHConnection bool,
 	protocol string,
+	ownerID uint64,
 ) {
 	m.mutex.Lock()
 	defer m.mutex.Unlock()
@@ -77,6 +79,7 @@ func (m *Manager) AddRemoteForward(
 	m.remoteMappings[key] = &RemoteForward{
 		RcvChan:    make(chan *types.CustomTcpIpChannelMsg, 5),
 		CancelChan: make(chan struct{}),
+		OwnerID:    ownerID,
 		CustomTcpIpChannelMsg: &types.CustomTcpIpChannelMsg{
 			Protocol:        protocol,
 			IsSshConn:       isSSHConnection,

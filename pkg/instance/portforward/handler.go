@@ -17,7 +17,11 @@ type SSHServerConn interface {
 
 // HandleTCPIPForwardRequest handles incoming tcpip-forward SSH requests
 // This is called when an SSH client requests a remote port forward
-func (m *Manager) HandleTCPIPForwardRequest(req *ssh.Request, sshServerConn SSHServerConn) {
+func (m *Manager) HandleTCPIPForwardRequest(
+	req *ssh.Request,
+	sshServerConn SSHServerConn,
+	ownerID uint64,
+) {
 	// Parse the incoming request
 	srcReqPayload := &types.TcpIpFwdRequest{}
 	if uErr := ssh.Unmarshal(req.Payload, srcReqPayload); uErr != nil {
@@ -103,7 +107,7 @@ func (m *Manager) HandleTCPIPForwardRequest(req *ssh.Request, sshServerConn SSHS
 			DstPort: 0,
 			SrcHost: srcReqPayload.BindAddress,
 			SrcPort: srcReqPayload.BindPort,
-		}, true, conf.ForwardingProtocolTCP)
+		}, true, conf.ForwardingProtocolTCP, ownerID)
 	}
 
 	control, _ := m.GetRemoteMapping(conf.ForwardingProtocolTCP, srcReqPayload.BindPort)
@@ -147,7 +151,7 @@ func (m *Manager) HandleTCPIPForwardRequest(req *ssh.Request, sshServerConn SSHS
 }
 
 // HandleCancelTCPIPForwardRequest handles an OpenSSH cancel-tcpip-forward request.
-func (m *Manager) HandleCancelTCPIPForwardRequest(req *ssh.Request) {
+func (m *Manager) HandleCancelTCPIPForwardRequest(req *ssh.Request, ownerID uint64) {
 	var payload types.TcpIpFwdRequest
 	if err := ssh.Unmarshal(req.Payload, &payload); err != nil {
 		if req.WantReply {
@@ -157,7 +161,10 @@ func (m *Manager) HandleCancelTCPIPForwardRequest(req *ssh.Request) {
 	}
 
 	control, err := m.GetRemoteMapping(conf.ForwardingProtocolTCP, payload.BindPort)
-	if err != nil || !control.IsSshConn || control.SrcHost != payload.BindAddress {
+	if err != nil ||
+		!control.IsSshConn ||
+		control.OwnerID != ownerID ||
+		control.SrcHost != payload.BindAddress {
 		if req.WantReply {
 			_ = req.Reply(false, nil)
 		}
@@ -275,7 +282,11 @@ func (m *Manager) HandleDirectUDPChannel(nc ssh.NewChannel) error {
 }
 
 // HandleUDPForwardRequest handles incoming udp-forward SSH requests
-func (m *Manager) HandleUDPForwardRequest(req *ssh.Request, sshServerConn SSHServerConn) {
+func (m *Manager) HandleUDPForwardRequest(
+	req *ssh.Request,
+	sshServerConn SSHServerConn,
+	ownerID uint64,
+) {
 	srcReqPayload := &types.TcpIpFwdRequest{}
 	if uErr := ssh.Unmarshal(req.Payload, srcReqPayload); uErr != nil {
 		m.logger.ErrorWith("Failed to unmarshal TcpIpFwdRequest request",
@@ -361,7 +372,7 @@ func (m *Manager) HandleUDPForwardRequest(req *ssh.Request, sshServerConn SSHSer
 			DstPort: 0,
 			SrcHost: srcReqPayload.BindAddress,
 			SrcPort: srcReqPayload.BindPort,
-		}, true, conf.ForwardingProtocolUDP)
+		}, true, conf.ForwardingProtocolUDP, ownerID)
 	}
 
 	control, _ := m.GetRemoteMapping(conf.ForwardingProtocolUDP, srcReqPayload.BindPort)
