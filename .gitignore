@@ -4,3 +4,6 @@ dist
 build
 server/cmd/build
 client/cmd/build
+.trae/*
+!.trae/deepwiki/
+!.trae/deepwiki/**

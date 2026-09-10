@@ -1,0 +1,252 @@
+{
+  "current_version_id": 1,
+  "versions": [
+    {
+      "version_id": 1,
+      "status": {
+        "session_id": "6aa223ecedcaf3528fb81527",
+        "commit_id": "0376b7e047d227528bf39294230692d97ae06e71",
+        "generate_type": "full"
+      },
+      "catalogs": {
+        ".trae/deepwiki/服务端实现与 Web 控制台/Web 控制台与 UI 实现.md": {
+          "content_hash": "a933bc7d1b76d62c6dabc2ceb9ba135fc11f2de526f6c5c54a9fdb53b04a3905",
+          "file_path": ".trae/deepwiki/服务端实现与 Web 控制台/Web 控制台与 UI 实现.md",
+          "chapter_number": "5.2"
+        },
+        ".trae/deepwiki/功能模块：Shell、SFTP 与代理/SFTP 文件系统操作实现.md": {
+          "content_hash": "fa9bf24c0dfabe654188a20bee4474c3a279fbbe2fded18b79125e67caef013f",
+          "file_path": ".trae/deepwiki/功能模块：Shell、SFTP 与代理/SFTP 文件系统操作实现.md",
+          "chapter_number": "8.3"
+        },
+        ".trae/deepwiki/功能模块：Shell、SFTP 与代理.md": {
+          "content_hash": "60af3944f0671cde6216dab573499e05e0b1275c3dfc73db078de9aa1b01a2cb",
+          "file_path": ".trae/deepwiki/功能模块：Shell、SFTP 与代理.md",
+          "chapter_number": "8"
+        },
+        ".trae/deepwiki/功能模块：Shell、SFTP 与代理/端口转发与隧道技术详解.md": {
+          "content_hash": "92f5524a8146cc1b15f9fa3b260e96fc81141d5b57838eae5c1495c266ee367e",
+          "file_path": ".trae/deepwiki/功能模块：Shell、SFTP 与代理/端口转发与隧道技术详解.md",
+          "chapter_number": "8.4"
+        },
+        ".trae/deepwiki/安全机制与身份验证.md": {
+          "content_hash": "bc17a07b2d9f4cbed47c784c5de52c2b5088ad4cdcfbc3fc8f55205f05cfef38",
+          "file_path": ".trae/deepwiki/安全机制与身份验证.md",
+          "chapter_number": "7"
+        },
+        ".trae/deepwiki/功能模块：Shell、SFTP 与代理/SSH 基础设施与会话管理.md": {
+          "content_hash": "80893fc66e00df08f015c9a9c9300011d3be973020bbe9a7b96292f0b39df51c",
+          "file_path": ".trae/deepwiki/功能模块：Shell、SFTP 与代理/SSH 基础设施与会话管理.md",
+          "chapter_number": "8.1"
+        },
+        ".trae/deepwiki/功能模块：Shell、SFTP 与代理/SOCKS5 代理服务器实现.md": {
+          "content_hash": "e4bfcfd8976b183fb989109cec7966facf7b36916c08540e02c7f8a96319386e",
+          "file_path": ".trae/deepwiki/功能模块：Shell、SFTP 与代理/SOCKS5 代理服务器实现.md",
+          "chapter_number": "8.5"
+        },
+        ".trae/deepwiki/客户端实现详解.md": {
+          "content_hash": "e4d91d9b4469d458373d51bc0d6fec64f608e7f16bedb1b46e76d39a72f4c645",
+          "file_path": ".trae/deepwiki/客户端实现详解.md",
+          "chapter_number": "4"
+        },
+        ".trae/deepwiki/核心模式与连接机制/核心运行模式：Client 与 Server.md": {
+          "content_hash": "de604587f2c690161ce9bcb229bd0f8ec3202ba9591c7d8731ae3c2e61057de7",
+          "file_path": ".trae/deepwiki/核心模式与连接机制/核心运行模式：Client 与 Server.md",
+          "chapter_number": "3.3"
+        },
+        ".trae/deepwiki/配置管理与 CLI 交互.md": {
+          "content_hash": "b47308dfc3aeb0f50fd9ab0491e48169ab62a782f8137dc0211ace581e32a2df",
+          "file_path": ".trae/deepwiki/配置管理与 CLI 交互.md",
+          "chapter_number": "9"
+        },
+        ".trae/deepwiki/服务端实现与 Web 控制台.md": {
+          "content_hash": "bce064c34757991706e0d3453e0322a56758d1c31a743f62e2f1d24965652066",
+          "file_path": ".trae/deepwiki/服务端实现与 Web 控制台.md",
+          "chapter_number": "5"
+        },
+        ".trae/deepwiki/服务端实现与 Web 控制台/认证与权限控制.md": {
+          "content_hash": "79d0e63ebb96f24030f3d65e212618b2b1b2209bc0775e6167354738aa71ff28",
+          "file_path": ".trae/deepwiki/服务端实现与 Web 控制台/认证与权限控制.md",
+          "chapter_number": "5.4"
+        },
+        ".trae/deepwiki/核心模式与连接机制/传输层实现：SSH over WebSocket.md": {
+          "content_hash": "276b62bb7c4ed500d20e2dd5abab9e27cd8a10bdb7e110090727eaaab546160c",
+          "file_path": ".trae/deepwiki/核心模式与连接机制/传输层实现：SSH over WebSocket.md",
+          "chapter_number": "3.1"
+        },
+        ".trae/deepwiki/服务端实现与 Web 控制台/命令处理器体系.md": {
+          "content_hash": "60b1fb8afbb8ca5e670fb0835ec3a95a0b7592bc5408c79c7422ed9331369800",
+          "file_path": ".trae/deepwiki/服务端实现与 Web 控制台/命令处理器体系.md",
+          "chapter_number": "5.3"
+        },
+        ".trae/deepwiki/核心模式与连接机制/扩展拓扑：Gateway 与 Beacon 模式.md": {
+          "content_hash": "d66f0b7832e94af17bb3ec29f1ffa4935b7ac3631a22e530b11a886ce776e08b",
+          "file_path": ".trae/deepwiki/核心模式与连接机制/扩展拓扑：Gateway 与 Beacon 模式.md",
+          "chapter_number": "3.4"
+        },
+        ".trae/deepwiki/项目概览与架构设计.md": {
+          "content_hash": "b50d6993bdd956e2f4bd51a78fa3b68b73cc88f94f497d192cecfa0f907e9ece",
+          "file_path": ".trae/deepwiki/项目概览与架构设计.md",
+          "chapter_number": "1"
+        },
+        ".trae/deepwiki/核心模式与连接机制/监听器与连接路由机制.md": {
+          "content_hash": "f31afef58c432ba113a9caf008ec1876e2c99b9c370b8855ac205630dcb7506a",
+          "file_path": ".trae/deepwiki/核心模式与连接机制/监听器与连接路由机制.md",
+          "chapter_number": "3.2"
+        },
+        ".trae/deepwiki/快速开始与部署指南.md": {
+          "content_hash": "9094c2a204cf70095fce1c1c3494bdeb9ec6db869494a5c8dc7a244ba0bdea62",
+          "file_path": ".trae/deepwiki/快速开始与部署指南.md",
+          "chapter_number": "2"
+        },
+        ".trae/deepwiki/服务端实现与 Web 控制台/服务端核心与生命周期.md": {
+          "content_hash": "678e989661d6105402e079fb7e68b1fd4506bf0b921036909acd47e9d1edbf2a",
+          "file_path": ".trae/deepwiki/服务端实现与 Web 控制台/服务端核心与生命周期.md",
+          "chapter_number": "5.1"
+        },
+        ".trae/deepwiki/功能模块：Shell、SFTP 与代理/交互式 Shell 与终端仿真业务.md": {
+          "content_hash": "d30b78ab8ae19d83afd2440d55ca26aa21a006a521772e8c5b17685b96ded9bb",
+          "file_path": ".trae/deepwiki/功能模块：Shell、SFTP 与代理/交互式 Shell 与终端仿真业务.md",
+          "chapter_number": "8.2"
+        },
+        ".trae/deepwiki/会话管理与路由系统.md": {
+          "content_hash": "95e237dec2224bf3bb7d0374bee8ff91cc76533077df67bafc180a6500bbe0f2",
+          "file_path": ".trae/deepwiki/会话管理与路由系统.md",
+          "chapter_number": "6"
+        },
+        ".trae/deepwiki/核心模式与连接机制.md": {
+          "content_hash": "4b3ec923e31540162fe327d906f9f35257fd90f0d7fdd97f384704fc87c805d1",
+          "file_path": ".trae/deepwiki/核心模式与连接机制.md",
+          "chapter_number": "3"
+        },
+        ".trae/deepwiki/开发指南与贡献流程.md": {
+          "content_hash": "1d3d8400f578b63c7ef638d3f5479dce4fc073bfde554c2a4455e6eb376a0cb3",
+          "file_path": ".trae/deepwiki/开发指南与贡献流程.md",
+          "chapter_number": "10"
+        }
+      }
+    }
+  ],
+  "status": {
+    "session_id": "6aa223ecedcaf3528fb81527",
+    "commit_id": "0376b7e047d227528bf39294230692d97ae06e71",
+    "generate_type": "full"
+  },
+  "catalogs": {
+    ".trae/deepwiki/服务端实现与 Web 控制台/Web 控制台与 UI 实现.md": {
+      "content_hash": "a933bc7d1b76d62c6dabc2ceb9ba135fc11f2de526f6c5c54a9fdb53b04a3905",
+      "file_path": ".trae/deepwiki/服务端实现与 Web 控制台/Web 控制台与 UI 实现.md",
+      "chapter_number": "5.2"
+    },
+    ".trae/deepwiki/功能模块：Shell、SFTP 与代理/SFTP 文件系统操作实现.md": {
+      "content_hash": "fa9bf24c0dfabe654188a20bee4474c3a279fbbe2fded18b79125e67caef013f",
+      "file_path": ".trae/deepwiki/功能模块：Shell、SFTP 与代理/SFTP 文件系统操作实现.md",
+      "chapter_number": "8.3"
+    },
+    ".trae/deepwiki/功能模块：Shell、SFTP 与代理.md": {
+      "content_hash": "60af3944f0671cde6216dab573499e05e0b1275c3dfc73db078de9aa1b01a2cb",
+      "file_path": ".trae/deepwiki/功能模块：Shell、SFTP 与代理.md",
+      "chapter_number": "8"
+    },
+    ".trae/deepwiki/功能模块：Shell、SFTP 与代理/端口转发与隧道技术详解.md": {
+      "content_hash": "92f5524a8146cc1b15f9fa3b260e96fc81141d5b57838eae5c1495c266ee367e",
+      "file_path": ".trae/deepwiki/功能模块：Shell、SFTP 与代理/端口转发与隧道技术详解.md",
+      "chapter_number": "8.4"
+    },
+    ".trae/deepwiki/安全机制与身份验证.md": {
+      "content_hash": "bc17a07b2d9f4cbed47c784c5de52c2b5088ad4cdcfbc3fc8f55205f05cfef38",
+      "file_path": ".trae/deepwiki/安全机制与身份验证.md",
+      "chapter_number": "7"
+    },
+    ".trae/deepwiki/功能模块：Shell、SFTP 与代理/SSH 基础设施与会话管理.md": {
+      "content_hash": "80893fc66e00df08f015c9a9c9300011d3be973020bbe9a7b96292f0b39df51c",
+      "file_path": ".trae/deepwiki/功能模块：Shell、SFTP 与代理/SSH 基础设施与会话管理.md",
+      "chapter_number": "8.1"
+    },
+    ".trae/deepwiki/功能模块：Shell、SFTP 与代理/SOCKS5 代理服务器实现.md": {
+      "content_hash": "e4bfcfd8976b183fb989109cec7966facf7b36916c08540e02c7f8a96319386e",
+      "file_path": ".trae/deepwiki/功能模块：Shell、SFTP 与代理/SOCKS5 代理服务器实现.md",
+      "chapter_number": "8.5"
+    },
+    ".trae/deepwiki/客户端实现详解.md": {
+      "content_hash": "e4d91d9b4469d458373d51bc0d6fec64f608e7f16bedb1b46e76d39a72f4c645",
+      "file_path": ".trae/deepwiki/客户端实现详解.md",
+      "chapter_number": "4"
+    },
+    ".trae/deepwiki/核心模式与连接机制/核心运行模式：Client 与 Server.md": {
+      "content_hash": "de604587f2c690161ce9bcb229bd0f8ec3202ba9591c7d8731ae3c2e61057de7",
+      "file_path": ".trae/deepwiki/核心模式与连接机制/核心运行模式：Client 与 Server.md",
+      "chapter_number": "3.3"
+    },
+    ".trae/deepwiki/配置管理与 CLI 交互.md": {
+      "content_hash": "b47308dfc3aeb0f50fd9ab0491e48169ab62a782f8137dc0211ace581e32a2df",
+      "file_path": ".trae/deepwiki/配置管理与 CLI 交互.md",
+      "chapter_number": "9"
+    },
+    ".trae/deepwiki/服务端实现与 Web 控制台.md": {
+      "content_hash": "bce064c34757991706e0d3453e0322a56758d1c31a743f62e2f1d24965652066",
+      "file_path": ".trae/deepwiki/服务端实现与 Web 控制台.md",
+      "chapter_number": "5"
+    },
+    ".trae/deepwiki/服务端实现与 Web 控制台/认证与权限控制.md": {
+      "content_hash": "79d0e63ebb96f24030f3d65e212618b2b1b2209bc0775e6167354738aa71ff28",
+      "file_path": ".trae/deepwiki/服务端实现与 Web 控制台/认证与权限控制.md",
+      "chapter_number": "5.4"
+    },
+    ".trae/deepwiki/核心模式与连接机制/传输层实现：SSH over WebSocket.md": {
+      "content_hash": "276b62bb7c4ed500d20e2dd5abab9e27cd8a10bdb7e110090727eaaab546160c",
+      "file_path": ".trae/deepwiki/核心模式与连接机制/传输层实现：SSH over WebSocket.md",
+      "chapter_number": "3.1"
+    },
+    ".trae/deepwiki/服务端实现与 Web 控制台/命令处理器体系.md": {
+      "content_hash": "60b1fb8afbb8ca5e670fb0835ec3a95a0b7592bc5408c79c7422ed9331369800",
+      "file_path": ".trae/deepwiki/服务端实现与 Web 控制台/命令处理器体系.md",
+      "chapter_number": "5.3"
+    },
+    ".trae/deepwiki/核心模式与连接机制/扩展拓扑：Gateway 与 Beacon 模式.md": {
+      "content_hash": "d66f0b7832e94af17bb3ec29f1ffa4935b7ac3631a22e530b11a886ce776e08b",
+      "file_path": ".trae/deepwiki/核心模式与连接机制/扩展拓扑：Gateway 与 Beacon 模式.md",
+      "chapter_number": "3.4"
+    },
+    ".trae/deepwiki/项目概览与架构设计.md": {
+      "content_hash": "b50d6993bdd956e2f4bd51a78fa3b68b73cc88f94f497d192cecfa0f907e9ece",
+      "file_path": ".trae/deepwiki/项目概览与架构设计.md",
+      "chapter_number": "1"
+    },
+    ".trae/deepwiki/核心模式与连接机制/监听器与连接路由机制.md": {
+      "content_hash": "f31afef58c432ba113a9caf008ec1876e2c99b9c370b8855ac205630dcb7506a",
+      "file_path": ".trae/deepwiki/核心模式与连接机制/监听器与连接路由机制.md",
+      "chapter_number": "3.2"
+    },
+    ".trae/deepwiki/快速开始与部署指南.md": {
+      "content_hash": "9094c2a204cf70095fce1c1c3494bdeb9ec6db869494a5c8dc7a244ba0bdea62",
+      "file_path": ".trae/deepwiki/快速开始与部署指南.md",
+      "chapter_number": "2"
+    },
+    ".trae/deepwiki/服务端实现与 Web 控制台/服务端核心与生命周期.md": {
+      "content_hash": "678e989661d6105402e079fb7e68b1fd4506bf0b921036909acd47e9d1edbf2a",
+      "file_path": ".trae/deepwiki/服务端实现与 Web 控制台/服务端核心与生命周期.md",
+      "chapter_number": "5.1"
+    },
+    ".trae/deepwiki/功能模块：Shell、SFTP 与代理/交互式 Shell 与终端仿真业务.md": {
+      "content_hash": "d30b78ab8ae19d83afd2440d55ca26aa21a006a521772e8c5b17685b96ded9bb",
+      "file_path": ".trae/deepwiki/功能模块：Shell、SFTP 与代理/交互式 Shell 与终端仿真业务.md",
+      "chapter_number": "8.2"
+    },
+    ".trae/deepwiki/会话管理与路由系统.md": {
+      "content_hash": "95e237dec2224bf3bb7d0374bee8ff91cc76533077df67bafc180a6500bbe0f2",
+      "file_path": ".trae/deepwiki/会话管理与路由系统.md",
+      "chapter_number": "6"
+    },
+    ".trae/deepwiki/核心模式与连接机制.md": {
+      "content_hash": "4b3ec923e31540162fe327d906f9f35257fd90f0d7fdd97f384704fc87c805d1",
+      "file_path": ".trae/deepwiki/核心模式与连接机制.md",
+      "chapter_number": "3"
+    },
+    ".trae/deepwiki/开发指南与贡献流程.md": {
+      "content_hash": "1d3d8400f578b63c7ef638d3f5479dce4fc073bfde554c2a4455e6eb376a0cb3",
+      "file_path": ".trae/deepwiki/开发指南与贡献流程.md",
+      "chapter_number": "10"
+    }
+  }
+}
