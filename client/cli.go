@@ -124,7 +124,11 @@ to the defined Slider Server.`,
 	cmd.Flags().StringVar(&templatePath, "http-template", "", "Path of a default file to serve (listener)")
 	cmd.Flags().StringVar(&serverHeader, "http-server-header", "", "Sets a server header value (listener)")
 	cmd.Flags().StringVar(&httpRedirect, "http-redirect", "", "Redirects incoming HTTP to given URL (listener)")
-	cmd.Flags().IntVar(&statusCode, "http-status-code", 200, "Template Status code [200|301|302|400|401|403|500|502|503] (listener)")
+	cmd.Flags().IntVar(
+		&statusCode,
+		"http-status-code",
+		200,
+		"Template Status code [200|301|302|400|401|403|500|502|503] (listener)")
 	cmd.Flags().BoolVar(&httpVersion, "http-version", false, "Enables /version HTTP path")
 	cmd.Flags().BoolVar(&httpHealth, "http-health", false, "Enables /health HTTP path")
 	cmd.Flags().StringVar(&customDNS, "dns", "", "Uses custom DNS server <host[:port]> for resolving server address")

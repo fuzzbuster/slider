@@ -75,11 +75,13 @@ func isPtyOn() bool {
 		outHandle := windows.Handle(os.Stdout.Fd())
 		var mode uint32
 		if err := windows.GetConsoleMode(outHandle, &mode); err == nil {
-			_ = windows.SetConsoleMode(outHandle, mode|windows.ENABLE_VIRTUAL_TERMINAL_PROCESSING|windows.ENABLE_PROCESSED_OUTPUT)
+			_ = windows.SetConsoleMode(outHandle,
+				mode|windows.ENABLE_VIRTUAL_TERMINAL_PROCESSING|windows.ENABLE_PROCESSED_OUTPUT)
 		}
 		errHandle := windows.Handle(os.Stderr.Fd())
 		if err := windows.GetConsoleMode(errHandle, &mode); err == nil {
-			_ = windows.SetConsoleMode(errHandle, mode|windows.ENABLE_VIRTUAL_TERMINAL_PROCESSING|windows.ENABLE_PROCESSED_OUTPUT)
+			_ = windows.SetConsoleMode(errHandle,
+				mode|windows.ENABLE_VIRTUAL_TERMINAL_PROCESSING|windows.ENABLE_PROCESSED_OUTPUT)
 		}
 	}
 	return available

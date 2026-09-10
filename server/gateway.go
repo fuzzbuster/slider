@@ -38,7 +38,8 @@ func (s *server) NewSSHClient(
 		authMethods = append(authMethods, ssh.PublicKeys(s.serverKey))
 	} else {
 		// No authentication required; use keyboard-interactive fallback for compatibility
-		authMethods = append(authMethods, ssh.KeyboardInteractive(func(user, instruction string, questions []string, echos []bool) (answers []string, err error) {
+		authMethods = append(authMethods, ssh.KeyboardInteractive(func(user, instruction string,
+			questions []string, echos []bool) (answers []string, err error) {
 			return nil, nil
 		}))
 	}
@@ -50,7 +51,8 @@ func (s *server) NewSSHClient(
 		ClientVersion:   "SSH-slider-server-client",
 	}
 
-	cConn, newChan, reqChan, err := ssh.NewClientConn(netConn, biSession.GetWebSocketConn().RemoteAddr().String(), sshConfig)
+	cConn, newChan, reqChan, err := ssh.NewClientConn(netConn,
+		biSession.GetWebSocketConn().RemoteAddr().String(), sshConfig)
 	if err != nil {
 		s.DErrorWith("Failed to establish SSH client connection", slog.F("err", err))
 		if biSession.GetNotifier() != nil {

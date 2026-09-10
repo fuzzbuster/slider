@@ -15,7 +15,8 @@ func NewLocalPathCompleter() *LocalPathCompleter {
 }
 
 // Complete performs local path completion
-func (lpc *LocalPathCompleter) Complete(input string, cwd string, system string, homeDir string) ([]string, string, error) {
+func (lpc *LocalPathCompleter) Complete(input string, cwd string,
+	system string, homeDir string) ([]string, string, error) {
 	// Parse input to get directory and prefix (with ~ expansion)
 	dir, prefix, _ := parsePathInput(input, cwd, system, homeDir)
 

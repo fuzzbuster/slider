@@ -117,12 +117,15 @@ its integrated Console by pressing CTR^C at any time.`,
 	cmd.Flags().StringVar(&listenerCert, "listener-cert", "", "Certificate for SSL listener")
 	cmd.Flags().StringVar(&listenerKey, "listener-key", "", "Key for SSL listener")
 	cmd.Flags().StringVar(&listenerCA, "listener-ca", "", "CA for verifying client certificates")
-	cmd.Flags().BoolVar(&headless, "headless", false, "Disables the internal console (CTR^C) and enables the Websocket Console")
+	cmd.Flags().BoolVar(&headless, "headless", false,
+		"Disables the internal console (CTR^C) and enables the Websocket Console")
 	cmd.Flags().BoolVar(&httpConsole, "http-console", false, "Enables /console HTTP endpoint")
 	cmd.Flags().BoolVar(&gateway, "gateway", false, "Enables Gateway mode (allows server chaining)")
-	cmd.Flags().StringVar(&callbackURL, "callback", "", "Connect to server on startup and offer control (requires --gateway)")
+	cmd.Flags().StringVar(&callbackURL, "callback", "",
+		"Connect to server on startup and offer control (requires --gateway)")
 	cmd.Flags().BoolVar(&callbackRetry, "callback-retry", false, "Retry callback connection indefinitely")
-	cmd.Flags().Int64Var(&callbackCertID, "callback-cert-id", 0, "Certificate ID used to authenticate callback host key")
+	cmd.Flags().Int64Var(&callbackCertID, "callback-cert-id", 0,
+		"Certificate ID used to authenticate callback host key")
 	cmd.Flags().StringVar(&callbackCA, "callback-ca", "", "CA certificate for callback server verification")
 	cmd.Flags().StringVar(&callbackServerName, "callback-server-name", "", "Server name for callback TLS verification")
 	cmd.Flags().StringVar(&callbackTLSCert, "callback-tls-cert", "", "TLS client certificate for callback")

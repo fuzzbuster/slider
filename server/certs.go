@@ -61,7 +61,8 @@ func (s *server) loadCertJar() error {
 	s.certTrack.CertCount = ids[len(ids)-1]
 	s.certTrackMutex.Unlock()
 
-	s.InfoWith("Loaded certificates from cert jar", slog.F("cert_count", s.certTrack.CertActive), slog.F("cert_jar", s.certJarFile))
+	s.InfoWith("Loaded certificates from cert jar",
+		slog.F("cert_count", s.certTrack.CertActive), slog.F("cert_jar", s.certJarFile))
 
 	return nil
 }
@@ -72,9 +73,13 @@ func safeEnabled() (bool, error) {
 	case "1", "", "true":
 		return true, nil
 	case "0", "false":
-		return false, fmt.Errorf("environment variable \"%s\" set to \"%s\", certificate changes won't be saved", conf.SliderCertJarEnvVar, saveJar)
+		return false, fmt.Errorf(
+			"environment variable \"%s\" set to \"%s\", certificate changes won't be saved",
+			conf.SliderCertJarEnvVar, saveJar)
 	}
-	return false, fmt.Errorf("unknown Environment variable \"%s\" value \"%s\", certificate changes won't be saved", conf.SliderCertJarEnvVar, saveJar)
+	return false, fmt.Errorf(
+		"unknown Environment variable \"%s\" value \"%s\", certificate changes won't be saved",
+		conf.SliderCertJarEnvVar, saveJar)
 }
 
 func (s *server) newCertItem() (*scrypt.KeyPair, error) {

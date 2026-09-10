@@ -78,7 +78,13 @@ func (s *BidirectionalSession) EnableSSH(port int, expose bool, useAltShell bool
 }
 
 // EnableShell starts the Shell endpoint instance
-func (s *BidirectionalSession) EnableShell(port int, expose bool, tlsOn bool, interactiveOn bool, useAltShell bool, notifier chan error) error {
+func (s *BidirectionalSession) EnableShell(
+	port int,
+	expose bool,
+	tlsOn bool,
+	interactiveOn bool,
+	useAltShell bool,
+	notifier chan error) error {
 	if s.role.IsAgent() {
 		return fmt.Errorf("shell instance not available for targets")
 	}

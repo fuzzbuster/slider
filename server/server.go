@@ -199,7 +199,8 @@ func (s *server) clientVerification(conn ssh.ConnMetadata, key ssh.PublicKey) (*
 	}
 
 	if id, _, ok := s.getCertByFingerprint(fp); ok {
-		s.DebugWith("Authenticated Client", slog.F("addr", conn.RemoteAddr()), slog.F("fingerprint", fp), slog.F("cert_id", id))
+		s.DebugWith("Authenticated Client",
+			slog.F("addr", conn.RemoteAddr()), slog.F("fingerprint", fp), slog.F("cert_id", id))
 		return &ssh.Permissions{
 			Extensions: map[string]string{
 				"fingerprint": fp,

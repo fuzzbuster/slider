@@ -290,7 +290,10 @@ func fieldsWithQuotes(input string) []string {
 	return newFields
 }
 
-func (c *Console) setSftpConsoleAutoComplete(registry *CommandRegistry, sftpCtx *SftpCommandContext, sftpClient *sftp.Client) {
+func (c *Console) setSftpConsoleAutoComplete(
+	registry *CommandRegistry,
+	sftpCtx *SftpCommandContext,
+	sftpClient *sftp.Client) {
 	// Get command list from registry for autocompletion
 	cmdList := registry.List()
 

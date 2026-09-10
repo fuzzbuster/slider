@@ -193,7 +193,12 @@ func (s *Service) SetUseAltShell(useAlt bool) {
 }
 
 // interactiveConnPipe is extracted from instance.go to handle shell connection piping
-func (s *Service) interactiveConnPipe(conn net.Conn, channelType string, payload []byte, winChange chan []byte, envChange chan []byte) error {
+func (s *Service) interactiveConnPipe(
+	conn net.Conn,
+	channelType string,
+	payload []byte,
+	winChange chan []byte,
+	envChange chan []byte) error {
 	sliderClientChannel, shellRequests, oErr := s.opener.OpenChannel(channelType, payload)
 	if oErr != nil {
 		s.logger.ErrorWith("Failed to open SSH channel",

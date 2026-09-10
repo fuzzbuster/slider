@@ -202,7 +202,8 @@ func (ca *CertificateAuthority) GetTLSClientConfig(clientCert *GeneratedCertific
 }
 
 // GetTLSServerConfig returns a TLS config for a server using the CA and server certificate
-func (ca *CertificateAuthority) GetTLSServerConfig(serverCert *GeneratedCertificate, verifyClientCert bool) *tls.Config {
+func (ca *CertificateAuthority) GetTLSServerConfig(
+	serverCert *GeneratedCertificate, verifyClientCert bool) *tls.Config {
 	// Create a cert pool and add the CA's cert to it
 	certPool := x509.NewCertPool()
 	certPool.AppendCertsFromPEM(ca.CertPEM)

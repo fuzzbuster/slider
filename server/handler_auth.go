@@ -130,7 +130,8 @@ func (s *server) handleAuthToken(w http.ResponseWriter, r *http.Request) {
 	var request TokenRequest
 	if err := json.NewDecoder(r.Body).Decode(&request); err != nil ||
 		request.Fingerprint == "" || request.ChallengeID == "" || request.Signature == "" {
-		sendErrorJSON(w, http.StatusBadRequest, "invalid_request", "Fingerprint, challenge ID and signature are required")
+		sendErrorJSON(w, http.StatusBadRequest, "invalid_request",
+			"Fingerprint, challenge ID and signature are required")
 		return
 	}
 

@@ -194,7 +194,8 @@ func (ctx *SftpCommandContext) getFileIdInfo(entry os.FileInfo, isRemote bool) (
 }
 
 // walkRemoteDir walks a remote directory recursively and calls the callback for each entry
-func (ctx *SftpCommandContext) walkRemoteDir(remotePath, relPath string, callback func(remotePath, relPath string, isDir bool) error) error {
+func (ctx *SftpCommandContext) walkRemoteDir(remotePath, relPath string,
+	callback func(remotePath, relPath string, isDir bool) error) error {
 	// Call callback for the directory itself if relPath is not empty
 	if relPath != "" {
 		if err := callback(remotePath, relPath, true); err != nil {
@@ -233,7 +234,8 @@ func (ctx *SftpCommandContext) walkRemoteDir(remotePath, relPath string, callbac
 }
 
 // copyFileWithProgress copies a file from src to dst with progress reporting
-func (ctx *SftpCommandContext) copyFileWithProgress(src io.Reader, dst io.Writer, totalSize int64, operation string, ui UserInterface) (int64, error) {
+func (ctx *SftpCommandContext) copyFileWithProgress(src io.Reader, dst io.Writer, totalSize int64,
+	operation string, ui UserInterface) (int64, error) {
 	buffer := make([]byte, conf.SFTPBufferSize)
 	var written int64
 	var lastReportedMB int64 = -1
@@ -267,7 +269,9 @@ func (ctx *SftpCommandContext) copyFileWithProgress(src io.Reader, dst io.Writer
 			if currentMB != lastReportedMB || written == totalSize {
 				lastReportedMB = currentMB
 				progress := float64(written) / float64(totalSize) * 100
-				ui.Printf("%s%s: %.1f%% (%.2f MB / %.2f MB)", eraseLine, operation, progress, float64(written)/conf.BytesPerMB, float64(totalSize)/conf.BytesPerMB)
+				ui.Printf("%s%s: %.1f%% (%.2f MB / %.2f MB)",
+					eraseLine, operation, progress, float64(written)/conf.BytesPerMB,
+					float64(totalSize)/conf.BytesPerMB)
 			}
 		}
 		if er != nil {
@@ -281,7 +285,8 @@ func (ctx *SftpCommandContext) copyFileWithProgress(src io.Reader, dst io.Writer
 }
 
 // walkLocalDir walks a local directory recursively and calls the callback for each entry
-func (ctx *SftpCommandContext) walkLocalDir(localPath, relPath string, callback func(localPath, relPath string, isDir bool) error) error {
+func (ctx *SftpCommandContext) walkLocalDir(localPath, relPath string,
+	callback func(localPath, relPath string, isDir bool) error) error {
 	// Call callback for the directory itself if relPath is not empty
 	if relPath != "" {
 		if err := callback(localPath, relPath, true); err != nil {

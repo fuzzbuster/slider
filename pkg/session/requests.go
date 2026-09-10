@@ -109,7 +109,10 @@ func (s *BidirectionalSession) routeRequest(req *ssh.Request) {
 		if s.role.IsAgent() || s.role.IsGateway() {
 			s.handleCancelTcpIpForward(req)
 		} else {
-			s.rejectRequest(req, fmt.Sprintf("%s not supported in this role %s", conf.SSHRequestCancelTcpIpForward, s.role.String()))
+			s.rejectRequest(req, fmt.Sprintf(
+				"%s not supported in this role %s",
+				conf.SSHRequestCancelTcpIpForward,
+				s.role.String()))
 		}
 	case conf.SSHRequestClientInfo:
 		s.handleClientInfo(req)
@@ -125,13 +128,19 @@ func (s *BidirectionalSession) routeRequest(req *ssh.Request) {
 		if (s.role.IsGateway() || s.role.IsAgent()) && s.applicationServer != nil {
 			s.handleSliderForwardRequest(req)
 		} else {
-			s.rejectRequest(req, fmt.Sprintf("%s not supported in this role %s", conf.SSHRequestSliderTCPIPForward, s.role.String()))
+			s.rejectRequest(req, fmt.Sprintf(
+				"%s not supported in this role %s",
+				conf.SSHRequestSliderTCPIPForward,
+				s.role.String()))
 		}
 	case conf.SSHRequestSliderUDPForward:
 		if s.role.IsAgent() || s.role.IsGateway() {
 			go s.handleSliderUDPForwardRequest(req)
 		} else {
-			s.rejectRequest(req, fmt.Sprintf("%s not supported in this role %s", conf.SSHRequestSliderUDPForward, s.role.String()))
+			s.rejectRequest(req, fmt.Sprintf(
+				"%s not supported in this role %s",
+				conf.SSHRequestSliderUDPForward,
+				s.role.String()))
 		}
 	case conf.SSHRequestSliderEvent:
 		if (s.role.IsGateway() || s.role.IsAgent()) && s.applicationServer != nil {

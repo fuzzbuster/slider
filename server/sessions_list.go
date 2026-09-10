@@ -40,7 +40,8 @@ func (s *server) writeSessionTable(
 	writer := new(tabwriter.Writer)
 	writer.Init(ui.Writer(), 0, 4, 2, ' ', 0)
 	_, _ = fmt.Fprintf(writer, "\n\tID\tOwner\tSystem\tRole\tUser\tHost\tIO\tConnection\tSSH/SFTP\tShell/TLS\tCertID\t")
-	_, _ = fmt.Fprintf(writer, "\n\t--\t-----\t------\t----\t----\t----\t--\t----------\t--------\t---------\t------\t\n")
+	_, _ = fmt.Fprintf(writer,
+		"\n\t--\t-----\t------\t----\t----\t----\t--\t----------\t--------\t---------\t------\t\n")
 
 	for _, id := range keys {
 		unified := unifiedMap[int64(id)]
