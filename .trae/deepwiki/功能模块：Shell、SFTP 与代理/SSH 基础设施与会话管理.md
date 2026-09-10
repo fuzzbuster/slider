@@ -6,7 +6,7 @@
 3. [核心组件解析](#核心组件解析)
    - [Instance 抽象与 Config 枢纽](#instance-抽象与-config-枢纽)
    - [SSH 服务封装 (sshservice)](#ssh-服务封装-sshservice)
-   - [插件化服务架构 (Service & ServiceManager)](#插件化服务架构-service--servicemanager)
+   - [固定服务组合](#固定服务组合)
 4. [架构设计与连接流程](#架构设计与连接流程)
    - [连接生命周期](#连接生命周期)
    - [SSH 通道多路复用 (Multiplexing)](#ssh-通道多路复用-multiplexing)
@@ -33,7 +33,7 @@
 
 Slider 的核心竞争力在于其基于 SSH 协议构建的强大、灵活且安全的通信基础设施。`pkg/instance` 模块不仅是 Slider 实例的管理中心，更是 SSH 协议多路复用（Multiplexing）能力的集中体现。
 
-通过将复杂的 SSH 协议细节封装在 `sshservice` 中，并利用 `Service` 接口实现插件化的功能扩展，Slider 能够在一个单一的加密连接上同时承载交互式 Shell、文件传输（SFTP）、SOCKS 代理以及复杂的端口转发任务。这种设计确保了通信的高效性，同时也极大地简化了安全边界的管理。
+通过将复杂的 SSH 协议细节封装在 `sshservice` 中，并由 `instance.Config` 静态组合固定子服务，Slider 能够在单一加密连接上承载交互式 Shell、文件传输（SFTP）、SOCKS 代理以及端口转发任务。`ServiceManager` 使用强类型 `EndpointType` 注册服务，不使用反射或运行时插件。
 
 ## 核心组件解析
 
@@ -47,9 +47,8 @@ type Config struct {
     SessionID            int64
     ServerKey            ssh.Signer          // SSH 服务端私钥
     AuthOn               bool                // 是否开启身份验证
-    sshServerConn        *ssh.ServerConn     // 底层 SSH 服务端连接
     sshSessionConn       ChannelOpener       // 抽象的通道开启接口
-    serviceManager       *ServiceManager     // 服务管理器
+    serviceManager       *ServiceManager     // 固定 endpoint 服务目录
     portFwdManager       *portforward.Manager
     shellService         *shell.Service
     sshService           *sshservice.Service
@@ -57,21 +56,12 @@ type Config struct {
 }
 ```
 
-`Config` 的设计采用了“组合”模式，将 `ServiceManager`、`PortForwardManager` 等组件集成在一起。通过 `New` 函数初始化时，它会自动注册核心服务：
+`Config` 采用固定组合模式：获得 `ChannelOpener` 后注册 Shell、SOCKS，并在存在 ServerKey 时注册 SSH：
 
 ```go
 func New(config *Config) *Config {
-    c := config
-    c.serviceManager = NewServiceManager()
-
-    if c.sshSessionConn != nil {
-        c.portFwdManager = portforward.NewManager(c.Logger, c.SessionID, c.sshSessionConn)
-        c.shellService = shell.NewService(c.Logger, c.SessionID, c.sshSessionConn)
-
-        _ = c.serviceManager.RegisterService(c.socksClient)
-        _ = c.serviceManager.RegisterService(c.shellService)
-    }
-    // ...
+    config.configureServices(config.sshSessionConn)
+    return config
 }
 ```
 
@@ -88,7 +78,7 @@ func New(config *Config) *Config {
 3. **分发通道与请求**: 监听并分发新开启的 SSH 通道（Channels）和全局请求（Requests）。
 
 ```go
-func (s *Service) Start(conn net.Conn) error {
+func (s *Service) Serve(conn net.Conn) error {
     sshConf := &ssh.ServerConfig{NoClientAuth: true}
     if s.authOn {
         sshConf.PublicKeyCallback = s.clientVerification
@@ -103,22 +93,9 @@ func (s *Service) Start(conn net.Conn) error {
 **Section sources**:
 - [pkg/instance/sshservice/service.go](pkg/instance/sshservice/service.go)
 
-### 插件化服务架构 (Service & ServiceManager)
+### 固定服务组合
 
-为了实现功能的灵活扩展，Slider 定义了 `Service` 接口。任何实现了 `Start`、`Stop` 和 `Type` 方法的组件都可以作为一个服务运行在 Slider 实例中。
-
-```go
-type Service interface {
-    Start(conn net.Conn) error
-    Stop() error
-    Type() string
-}
-```
-
-`ServiceManager` 则负责这些服务的生命周期管理。它维护一个服务映射表，并根据连接类型（如 `socks`、`shell`）将传入的 `net.Conn` 路由到对应的服务。这种设计允许 Slider 在不修改核心逻辑的情况下，轻松添加新的协议支持。
-
-**Section sources**:
-- [pkg/instance/service.go](pkg/instance/service.go)
+当前 endpoint 类型是封闭集合：Shell、SOCKS、SSH 和仅执行命令的 Exec。Shell、SOCKS、SSH 实现统一的 `EndpointService` 契约，由 `ServiceManager` 执行注册、查找、分发与服务级关闭；重复注册会直接报错。listener、活动连接和幂等停止仍由每次启动独立的 `endpointRun` 持有。`PortForwardManager` 管理多映射和多 channel，不被强行包装成单连接服务。
 
 ## 架构设计与连接流程
 
@@ -131,25 +108,26 @@ sequenceDiagram
     participant Client
     participant ServerHandler
     participant Instance
-    participant SSHService
     participant ServiceManager
+    participant SSHService
 
     Client->>ServerHandler: WebSocket Upgrade Request
     ServerHandler->>Instance: New Instance & Config
-    Instance->>SSHService: Start(net.Conn)
+    Instance->>ServiceManager: Serve(SshEndpoint, net.Conn)
+    ServiceManager->>SSHService: Serve(net.Conn)
     SSHService->>Client: SSH Handshake & Auth
     Client-->>SSHService: SSH Authenticated
     SSHService->>Instance: Dispatch Channels/Requests
-    Instance->>ServiceManager: Handle Specific Service (Shell/SOCKS)
+    Instance->>SSHService: Handle connection using fixed EndpointType
 ```
 
-连接的生命周期由 `Instance` 严格管控。当底层的 SSH 连接断开时，`Instance` 会触发 `stopSignal`，关闭所有关联的监听器和子服务，确保资源得到彻底释放。
+连接生命周期由 `Instance` 严格管控。底层 SSH 连接断开或调用 `Stop` 时，当前 `endpointRun` 会幂等关闭 listener 和所有已接受连接，并等待处理 goroutine 退出。
 
 此流程确保了连接的安全性（通过 SSH）和灵活性（通过服务分发）。
 
 **Diagram sources**:
 - [server/handler.go:L87-L174](server/handler.go#L87-L174)
-- [pkg/instance/instance.go:L220-L302](pkg/instance/instance.go#L220-L302)
+- [pkg/instance/instance.go](pkg/instance/instance.go)
 
 ### SSH 通道多路复用 (Multiplexing)
 
@@ -161,14 +139,14 @@ graph TD
         Conn[ssh.ServerConn]
     end
 
-    Conn -->|Global Requests| GR[handleRequests]
+    Conn -->|Global Requests| GR[handleGlobalRequests]
     Conn -->|New Channels| NC{Channel Type?}
 
     NC -->|session| S[Session Channel]
     NC -->|direct-tcpip| PF[Port Forwarding]
     NC -->|direct-udp| UDP[UDP Forwarding]
 
-    S -->|Requests| SR[handleRequests]
+    S -->|Requests| SR[handleSessionRequests]
     SR -->|pty-req| PTY[PTY Allocation]
     SR -->|shell| SHELL[Interactive Shell]
     SR -->|exec| EXEC[Command Execution]
@@ -240,25 +218,21 @@ flowchart LR
 这种桥接机制确保了用户在远程终端上的操作（如调整窗口、设置环境变量）能够无缝传递到实际执行的进程中。
 
 **Diagram sources**:
-- [pkg/instance/instance.go:L813-L870](pkg/instance/instance.go#L813-L870)
+- [pkg/instance/sshservice/service.go](pkg/instance/sshservice/service.go)
 
 ## 会话生命周期管理
 
 Slider 的会话管理遵循“安全退出”原则。
 
-1.  **建立期**: `StartEndpoint` 启动 TCP 监听，并在接受连接后通过 `ServiceManager` 启动对应服务。
-2.  **运行期**: 实例持续监控底层连接状态。通过 `conn.Wait()` 阻塞等待，一旦连接异常或正常关闭，立即触发清理逻辑。
-3.  **清理期**: `Stop` 方法被调用时，会依次停止所有注册的服务，关闭 `portFwdManager` 管理的所有转发通道，并最终关闭 TCP 监听器。
+1.  **建立期**: `StartEndpoint` 或 `StartTLSEndpoint` 创建 listener，并交给统一的 `serveEndpoint`。
+2.  **运行期**: `endpointRun` 跟踪 listener 和所有已接受连接；SSH/Shell/SOCKS 子服务只处理协议。
+3.  **清理期**: `Stop` 幂等关闭 listener 和活动连接，等待处理 goroutine 退出后再重置状态。
 
 ```go
 func (si *Config) Stop() error {
-    si.stopSignal <- true
-    <-si.done
-
-    if si.serviceManager != nil {
-        _ = si.serviceManager.StopAll()
-    }
-    // ... 重置状态
+    run.stop()
+    <-run.done
+    return nil
 }
 ```
 
@@ -271,9 +245,9 @@ func (si *Config) Stop() error {
 
 以下是本章节涉及的核心源文件：
 
-- `pkg/instance/instance.go`: 实例管理与 SSH 请求分发核心。
+- `pkg/instance/instance.go`: endpoint 监听、生命周期与固定服务协调。
+- `pkg/instance/service.go`: 强类型 endpoint 服务注册与分发。
 - `pkg/instance/sshservice/service.go`: SSH 协议封装与服务端实现。
-- `pkg/instance/service.go`: 服务接口与管理器定义。
 - `pkg/instance/shell/service.go`: 交互式 Shell 服务实现。
 - `pkg/instance/portforward/manager.go`: 端口转发管理器。
 - `server/handler.go`: 服务器端连接处理与实例初始化。

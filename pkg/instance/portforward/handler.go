@@ -146,6 +146,34 @@ func (m *Manager) HandleTCPIPForwardRequest(req *ssh.Request, sshServerConn SSHS
 	}
 }
 
+// HandleCancelTCPIPForwardRequest handles an OpenSSH cancel-tcpip-forward request.
+func (m *Manager) HandleCancelTCPIPForwardRequest(req *ssh.Request) {
+	var payload types.TcpIpFwdRequest
+	if err := ssh.Unmarshal(req.Payload, &payload); err != nil {
+		if req.WantReply {
+			_ = req.Reply(false, nil)
+		}
+		return
+	}
+
+	control, err := m.GetRemoteMapping(conf.ForwardingProtocolTCP, payload.BindPort)
+	if err != nil || !control.IsSshConn || control.SrcHost != payload.BindAddress {
+		if req.WantReply {
+			_ = req.Reply(false, nil)
+		}
+		return
+	}
+
+	ok, _, err := m.conn.SendRequest(conf.SSHRequestCancelTcpIpForward, true, req.Payload)
+	if err == nil && ok {
+		control.cancel()
+		m.RemoveRemoteForward(conf.ForwardingProtocolTCP, payload.BindPort)
+	}
+	if req.WantReply {
+		_ = req.Reply(err == nil && ok, nil)
+	}
+}
+
 // HandleDirectTCPIPChannel handles incoming direct-tcpip channel requests
 // This is called when an SSH client opens a local port forward channel
 func (m *Manager) HandleDirectTCPIPChannel(nc ssh.NewChannel) error {

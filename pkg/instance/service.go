@@ -1,83 +1,85 @@
 package instance
 
 import (
+	"errors"
 	"fmt"
 	"net"
 	"sync"
 )
 
-// Service represents a service that can be started and stopped
-type Service interface {
-	// Start initiates the service with the given connection
-	Start(conn net.Conn) error
-	// Stop gracefully shuts down the service
-	Stop() error
-	// Type returns the service type identifier
-	Type() string
+// EndpointType identifies the protocol served by an endpoint listener.
+type EndpointType string
+
+const (
+	SocksEndpoint EndpointType = "socks-endpoint"
+	ShellEndpoint EndpointType = "shell-endpoint"
+	SshEndpoint   EndpointType = "ssh-endpoint"
+	ExecEndpoint  EndpointType = "exec-endpoint"
+)
+
+// EndpointService handles accepted connections for one endpoint protocol.
+type EndpointService interface {
+	Serve(net.Conn) error
+	Close() error
 }
 
-// ServiceManager manages multiple services and dispatches incoming connections
+// ServiceManager dispatches connections to statically registered endpoint services.
 type ServiceManager struct {
-	services map[string]Service
 	mutex    sync.RWMutex
+	services map[EndpointType]EndpointService
 }
 
-// NewServiceManager creates a new service manager
 func NewServiceManager() *ServiceManager {
 	return &ServiceManager{
-		services: make(map[string]Service),
+		services: make(map[EndpointType]EndpointService),
 	}
 }
 
-// RegisterService registers a service with the manager
-// If a service of the same type already exists, it will be replaced
-func (sm *ServiceManager) RegisterService(service Service) error {
-	sm.mutex.Lock()
-	defer sm.mutex.Unlock()
+func (m *ServiceManager) Register(endpointType EndpointType, service EndpointService) error {
+	if endpointType == "" {
+		return fmt.Errorf("endpoint type is empty")
+	}
+	if service == nil {
+		return fmt.Errorf("service %q is nil", endpointType)
+	}
 
-	serviceType := service.Type()
-	sm.services[serviceType] = service
+	m.mutex.Lock()
+	defer m.mutex.Unlock()
+	if _, exists := m.services[endpointType]; exists {
+		return fmt.Errorf("service %q is already registered", endpointType)
+	}
+	m.services[endpointType] = service
 	return nil
 }
 
-// GetService retrieves a service by type
-func (sm *ServiceManager) GetService(serviceType string) (Service, error) {
-	sm.mutex.RLock()
-	defer sm.mutex.RUnlock()
+func (m *ServiceManager) Has(endpointType EndpointType) bool {
+	m.mutex.RLock()
+	defer m.mutex.RUnlock()
+	_, exists := m.services[endpointType]
+	return exists
+}
 
-	service, exists := sm.services[serviceType]
+func (m *ServiceManager) Serve(endpointType EndpointType, conn net.Conn) error {
+	m.mutex.RLock()
+	service, exists := m.services[endpointType]
+	m.mutex.RUnlock()
 	if !exists {
-		return nil, fmt.Errorf("service type %s not found", serviceType)
+		return fmt.Errorf("service %q is not registered", endpointType)
 	}
-
-	return service, nil
+	return service.Serve(conn)
 }
 
-// HandleConnection dispatches a connection to the appropriate service
-func (sm *ServiceManager) HandleConnection(serviceType string, conn net.Conn) error {
-	service, err := sm.GetService(serviceType)
-	if err != nil {
-		return err
+func (m *ServiceManager) CloseAll() error {
+	m.mutex.RLock()
+	services := make([]EndpointService, 0, len(m.services))
+	for _, service := range m.services {
+		services = append(services, service)
 	}
-
-	return service.Start(conn)
-}
-
-// StopAll stops all registered services
-func (sm *ServiceManager) StopAll() error {
-	sm.mutex.RLock()
-	defer sm.mutex.RUnlock()
+	m.mutex.RUnlock()
 
 	var errs []error
-	for _, service := range sm.services {
-		if err := service.Stop(); err != nil {
-			errs = append(errs, err)
-		}
+	for _, service := range services {
+		errs = append(errs, service.Close())
 	}
-
-	if len(errs) > 0 {
-		return fmt.Errorf("failed to stop %d service(s)", len(errs))
-	}
-
-	return nil
+	return errors.Join(errs...)
 }

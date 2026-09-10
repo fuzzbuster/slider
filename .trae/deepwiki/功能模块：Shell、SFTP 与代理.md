@@ -40,7 +40,7 @@
 
 Slider 的核心价值在于其提供的丰富运维功能。与传统的命令执行工具不同，Slider 旨在提供一个全功能的远程工作环境。这意味着它不仅需要能够执行简单的命令，还需要支持复杂的交互式操作，如全功能的 Shell 环境、高效的文件传输、以及灵活的网络隧道。
 
-这些功能模块的设计遵循了高度解耦的原则，每个模块都作为一个独立的 `Service` 运行，由 `ServiceManager` 统一管理。这种设计使得 Slider 能够根据不同的运行模式（如 Beacon 模式、Gateway 模式）灵活地启用或禁用特定功能。所有的功能都建立在 SSH 协议之上，利用 SSH 的多路复用能力，在单一的底层连接中承载多种业务流量。
+这些功能模块由 `instance.Config` 作为轻量协调器持有，并静态注册到 `ServiceManager`。`Config` 只负责监听、活动连接和停止流程，`ServiceManager` 根据强类型 `EndpointType` 将连接交给 Shell、SOCKS 或 SSH 子服务；协议细节保留在各自子包中。所有功能都建立在 SSH 协议之上，利用 SSH 的多路复用能力，在单一底层连接中承载多种业务流量。
 
 ## 交互式 Shell 与 PTY 控制
 
@@ -378,41 +378,32 @@ type ChannelOpener interface {
 }
 ```
 
-### Service 接口
-所有功能模块都实现了 `Service` 接口，这使得 `ServiceManager` 可以统一管理它们的生命周期。
-
-```go
-type Service interface {
-    Type() string
-    Start(net.Conn) error
-    Stop() error
-}
-```
-
 ### Instance 配置结构体
-`pkg/instance/instance.go` 中的 `Config` 结构体（实际上充当了 Instance 对象）是所有服务的协调者。它持有所有的管理器引用，并负责在接收到新的网络连接时，根据 `EndpointType` 将其分发给正确的服务。
+`pkg/instance/instance.go` 中的 `Config` 结构体（实际上充当了 Instance 对象）是 endpoint 协调者。它持有固定服务和 `ServiceManager`，并负责监听器、已接受连接和停止状态；Manager 根据 `EndpointType` 完成分发。
 
 ```mermaid
 graph TB
     subgraph Instance[Slider Instance]
-        SM[ServiceManager]
+        ER[Endpoint Run]
+        SM[Service Manager]
         PF[PortForward Manager]
         SC[SOCKS Client]
         SH[Shell Service]
         SS[SSH Service]
     end
 
-    Listener[TCP Listener] -->|Accept| Dispatcher{Endpoint Type?}
-    Dispatcher -->|Socks| SC
-    Dispatcher -->|Shell| SH
-    Dispatcher -->|SSH| SS
+    Listener[TCP/TLS Listener] --> ER
+    ER -->|Accept| SM
+    SM -->|SocksEndpoint| SC
+    SM -->|ShellEndpoint| SH
+    SM -->|SshEndpoint| SS
 
     SC -.-> PF
     SH -.-> PF
     SS -.-> PF
 ```
 
-架构图展示了 Slider 内部的组件关系。`Instance` 作为一个中心枢纽，通过 `Dispatcher` 逻辑将外部请求路由到特定的服务实现。这种分层设计使得系统在增加新功能（如新的代理协议或 Shell 类型）时具有极高的灵活性。同时，底层的 `PortForward Manager` 为所有上层服务提供了统一的隧道能力支持。
+架构图展示了 Slider 内部的组件关系。`Endpoint Run` 拥有 listener、活动连接和幂等停止流程，`ServiceManager` 只负责类型到服务的静态映射。底层的 `PortForward Manager` 与 endpoint 服务同层，专门管理隧道状态，不实现单连接 `EndpointService`。
 
 **Section sources**:
 - [pkg/instance/instance.go](pkg/instance/instance.go)

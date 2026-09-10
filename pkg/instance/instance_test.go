@@ -2,6 +2,7 @@ package instance
 
 import (
 	"encoding/binary"
+	"fmt"
 	"io"
 	"net"
 	"slider/pkg/slog"
@@ -113,6 +114,7 @@ func TestEndpointIntegration(t *testing.T) {
 	// Create a sftp instance
 	config := &Config{
 		Logger:         logger,
+		EndpointType:   SocksEndpoint,
 		sshSessionConn: mockSSHConn,
 	}
 
@@ -143,6 +145,11 @@ func TestEndpointIntegration(t *testing.T) {
 		t.Error("Config should be enabled after starting")
 	}
 
+	endpointConn, err := net.Dial("tcp", fmt.Sprintf("127.0.0.1:%d", port))
+	if err != nil {
+		t.Fatalf("Failed to connect to endpoint: %v", err)
+	}
+
 	// Stop the endpoint
 	err = instance.Stop()
 	if err != nil {
@@ -163,6 +170,11 @@ func TestEndpointIntegration(t *testing.T) {
 	if instance.IsEnabled() {
 		t.Error("Config should be disabled after stopping")
 	}
+	_ = endpointConn.SetReadDeadline(time.Now().Add(time.Second))
+	if _, err := endpointConn.Read(make([]byte, 1)); err == nil {
+		t.Error("accepted endpoint connection remained open after Stop")
+	}
+	_ = endpointConn.Close()
 
 	// Cleanup
 	_ = clientConn.Close()
@@ -194,7 +206,9 @@ func (m *mockSSHConn) Close() error {
 }
 
 func (m *mockSSHConn) Wait() error {
-	return nil
+	buffer := make([]byte, 1)
+	_, err := m.netConn.Read(buffer)
+	return err
 }
 
 func (m *mockSSHConn) User() string {
