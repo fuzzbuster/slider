@@ -199,8 +199,11 @@ sequenceDiagram
     participant JWT as JWT Provider
     participant Console as Console Page
 
-    User->>Auth: 提交证书指纹 (POST /auth/token)
-    Auth->>Auth: 验证指纹是否在允许列表
+    User->>Auth: 请求一次性挑战 (POST /auth/challenge)
+    Auth-->>User: 返回 challenge_id 与随机 challenge
+    User->>User: 使用授权证书私钥签名
+    User->>Auth: 提交指纹、challenge_id 与签名 (POST /auth/token)
+    Auth->>Auth: 验证指纹、挑战有效期和 Ed25519 签名
     Auth->>JWT: 生成 Claims (Subject=指纹, CertID)
     JWT-->>Auth: 返回签名后的令牌
     Auth-->>User: 设置 HttpOnly Cookie 并返回 JSON
@@ -212,7 +215,7 @@ sequenceDiagram
 
 ### 证书指纹验证与令牌颁发
 
-在 `handleAuthToken` 中，服务端会检查用户提供的指纹。如果指纹与服务端证书匹配，或者存在于已导入的客户端证书库（`certTrack`）中，则认为身份合法。
+服务端只接受证书库（`certTrack`）中的客户端证书。指纹仅用于定位公钥，客户端还必须对一次性 challenge 进行 Ed25519 签名，以证明其持有对应私钥。challenge 使用后立即失效，原始指纹不能作为 Token 使用。
 
 令牌的签名密钥是动态生成的，通常派生自服务端的 CA 私钥，这保证了即使服务端重启，只要密钥材料不变，之前的令牌依然有效（在有效期内）。
 

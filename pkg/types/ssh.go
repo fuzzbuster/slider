@@ -1,6 +1,24 @@
 package types
 
-import "golang.org/x/crypto/ssh"
+import (
+	"fmt"
+
+	"golang.org/x/crypto/ssh"
+)
+
+// MarshalSSHString encodes a string using the SSH wire representation.
+func MarshalSSHString(value string) []byte {
+	return ssh.Marshal(struct{ Value string }{Value: value})
+}
+
+// ParseSSHString decodes one SSH wire-format string.
+func ParseSSHString(payload []byte) (string, error) {
+	var value struct{ Value string }
+	if err := ssh.Unmarshal(payload, &value); err != nil {
+		return "", fmt.Errorf("invalid SSH string payload: %w", err)
+	}
+	return value.Value, nil
+}
 
 // PtyRequest is the structure of an SSH_MSG_CHANNEL_REQUEST
 // "pty-req" as described in RFC4254
@@ -44,7 +62,8 @@ type CustomTcpIpChannelMsg struct {
 	Protocol  string
 	IsSshConn bool
 	*TcpIpChannelMsg
-	Channel ssh.Channel
+	Channel ssh.Channel   `json:"-"`
+	Done    chan struct{} `json:"-"`
 }
 
 // ForwardRequestPayload defines the payload for slider-forward-request

@@ -49,7 +49,6 @@ type BidirectionalSession struct {
 	// Lifecycle Management
 	KeepAliveChan chan bool
 	keepAliveOn   bool
-	Disconnect    chan bool // Exported for compatibility
 	active        bool
 	sessionMutex  sync.Mutex
 

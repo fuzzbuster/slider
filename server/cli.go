@@ -12,32 +12,37 @@ import (
 // NewCommand creates the server cobra command
 func NewCommand() *cobra.Command {
 	var (
-		verbose       string
-		address       string
-		port          int
-		keepalive     time.Duration
-		colorless     bool
-		auth          bool
-		certJarFile   string
-		caStore       bool
-		caStorePath   string
-		templatePath  string
-		serverHeader  string
-		httpRedirect  string
-		statusCode    int
-		httpVersion   bool
-		httpHealth    bool
-		customProto   string
-		listenerCert  string
-		listenerKey   string
-		listenerCA    string
-		jsonLog       bool
-		callerLog     bool
-		headless      bool
-		httpConsole   bool
-		gateway       bool
-		callbackURL   string
-		callbackRetry bool
+		verbose            string
+		address            string
+		port               int
+		keepalive          time.Duration
+		colorless          bool
+		auth               bool
+		certJarFile        string
+		caStore            bool
+		caStorePath        string
+		templatePath       string
+		serverHeader       string
+		httpRedirect       string
+		statusCode         int
+		httpVersion        bool
+		httpHealth         bool
+		customProto        string
+		listenerCert       string
+		listenerKey        string
+		listenerCA         string
+		jsonLog            bool
+		callerLog          bool
+		headless           bool
+		httpConsole        bool
+		gateway            bool
+		callbackURL        string
+		callbackRetry      bool
+		callbackCertID     int64
+		callbackCA         string
+		callbackServerName string
+		callbackTLSCert    string
+		callbackTLSKey     string
 	)
 
 	cmd := &cobra.Command{
@@ -53,32 +58,37 @@ its integrated Console by pressing CTR^C at any time.`,
 		RunE: func(cmd *cobra.Command, args []string) error {
 			// Build configuration from flags
 			cfg := &Config{
-				Verbose:       verbose,
-				Address:       address,
-				Port:          port,
-				Keepalive:     keepalive,
-				Colorless:     colorless,
-				Auth:          auth,
-				CertJarFile:   certJarFile,
-				CaStore:       caStore,
-				CaStorePath:   caStorePath,
-				TemplatePath:  templatePath,
-				ServerHeader:  serverHeader,
-				HttpRedirect:  httpRedirect,
-				StatusCode:    statusCode,
-				HttpVersion:   httpVersion,
-				HttpHealth:    httpHealth,
-				CustomProto:   customProto,
-				ListenerCert:  listenerCert,
-				ListenerKey:   listenerKey,
-				ListenerCA:    listenerCA,
-				JsonLog:       jsonLog,
-				CallerLog:     callerLog,
-				Headless:      headless,
-				HttpConsole:   httpConsole,
-				Gateway:       gateway,
-				CallbackURL:   callbackURL,
-				CallbackRetry: callbackRetry,
+				Verbose:            verbose,
+				Address:            address,
+				Port:               port,
+				Keepalive:          keepalive,
+				Colorless:          colorless,
+				Auth:               auth,
+				CertJarFile:        certJarFile,
+				CaStore:            caStore,
+				CaStorePath:        caStorePath,
+				TemplatePath:       templatePath,
+				ServerHeader:       serverHeader,
+				HttpRedirect:       httpRedirect,
+				StatusCode:         statusCode,
+				HttpVersion:        httpVersion,
+				HttpHealth:         httpHealth,
+				CustomProto:        customProto,
+				ListenerCert:       listenerCert,
+				ListenerKey:        listenerKey,
+				ListenerCA:         listenerCA,
+				JsonLog:            jsonLog,
+				CallerLog:          callerLog,
+				Headless:           headless,
+				HttpConsole:        httpConsole,
+				Gateway:            gateway,
+				CallbackURL:        callbackURL,
+				CallbackRetry:      callbackRetry,
+				CallbackCertID:     callbackCertID,
+				CallbackCA:         callbackCA,
+				CallbackServerName: callbackServerName,
+				CallbackTLSCert:    callbackTLSCert,
+				CallbackTLSKey:     callbackTLSKey,
 			}
 
 			// Call the RunServer function
@@ -112,6 +122,11 @@ its integrated Console by pressing CTR^C at any time.`,
 	cmd.Flags().BoolVar(&gateway, "gateway", false, "Enables Gateway mode (allows server chaining)")
 	cmd.Flags().StringVar(&callbackURL, "callback", "", "Connect to server on startup and offer control (requires --gateway)")
 	cmd.Flags().BoolVar(&callbackRetry, "callback-retry", false, "Retry callback connection indefinitely")
+	cmd.Flags().Int64Var(&callbackCertID, "callback-cert-id", 0, "Certificate ID used to authenticate callback host key")
+	cmd.Flags().StringVar(&callbackCA, "callback-ca", "", "CA certificate for callback server verification")
+	cmd.Flags().StringVar(&callbackServerName, "callback-server-name", "", "Server name for callback TLS verification")
+	cmd.Flags().StringVar(&callbackTLSCert, "callback-tls-cert", "", "TLS client certificate for callback")
+	cmd.Flags().StringVar(&callbackTLSKey, "callback-tls-key", "", "TLS client key for callback")
 	cmd.Flags().BoolVar(&jsonLog, "json-log", false, "Enables JSON formatted logging")
 	if conf.Version == "development" {
 		cmd.Flags().BoolVar(&callerLog, "caller-log", false, "Display caller information in logs")
@@ -119,6 +134,7 @@ its integrated Console by pressing CTR^C at any time.`,
 
 	// Mark flag dependencies
 	cmd.MarkFlagsRequiredTogether("listener-cert", "listener-key")
+	cmd.MarkFlagsRequiredTogether("callback-tls-cert", "callback-tls-key")
 	if listenerCA != "" {
 		cmd.MarkFlagsRequiredTogether("listener-ca", "listener-cert", "listener-key")
 	}

@@ -94,7 +94,8 @@
             color: var(--text-color);
         }
 
-        input[type="text"] {
+        input[type="text"],
+        input[type="password"] {
             width: 100%;
             padding: 12px 14px;
             background: var(--input-bg);
@@ -106,7 +107,8 @@
             transition: all 0.2s;
         }
 
-        input[type="text"]:focus {
+        input[type="text"]:focus,
+        input[type="password"]:focus {
             outline: none;
             border-color: var(--accent-color);
             box-shadow: 0 0 0 3px rgba(17, 168, 205, 0.15);
@@ -214,6 +216,12 @@
                         required autofocus />
                 </div>
 
+                <div class="form-group">
+                    <label for="privateKey">Certificate Private Key</label>
+                    <input type="password" id="privateKey" name="privateKey" placeholder="Base64 private key"
+                        autocomplete="off" required />
+                </div>
+
                 <button type="submit" id="submitBtn">
                     Authenticate
                 </button>
@@ -256,6 +264,7 @@
         // Form handling
         const form = document.getElementById('loginForm');
         const fingerprintInput = document.getElementById('fingerprint');
+        const privateKeyInput = document.getElementById('privateKey');
         const submitBtn = document.getElementById('submitBtn');
         const errorDiv = document.getElementById('error');
 
@@ -268,13 +277,36 @@
             errorDiv.classList.remove('show');
         }
 
+        function decodeBase64(value) {
+            const normalized = value.replace(/\s/g, '').replace(/-/g, '+').replace(/_/g, '/');
+            const padded = normalized + '='.repeat((4 - normalized.length % 4) % 4);
+            return Uint8Array.from(atob(padded), char => char.charCodeAt(0));
+        }
+
+        function encodeBase64(value) {
+            let binary = '';
+            for (const byte of new Uint8Array(value)) {
+                binary += String.fromCharCode(byte);
+            }
+            return btoa(binary).replace(/=+$/, '');
+        }
+
+        function challengeMessage(challenge) {
+            const context = new TextEncoder().encode('slider-web-auth-v1\0');
+            const message = new Uint8Array(context.length + challenge.length);
+            message.set(context);
+            message.set(challenge, context.length);
+            return message;
+        }
+
         form.addEventListener('submit', async (e) => {
             e.preventDefault();
             hideError();
 
             const fingerprint = fingerprintInput.value.trim();
-            if (!fingerprint) {
-                showError('Please enter a certificate fingerprint');
+            const privateKey = privateKeyInput.value.trim();
+            if (!fingerprint || !privateKey) {
+                showError('Please enter the certificate fingerprint and private key');
                 return;
             }
 
@@ -283,12 +315,44 @@
             submitBtn.textContent = 'Authenticating...';
 
             try {
-                const response = await fetch('/auth/token', {
+                const challengeResponse = await fetch('/auth/challenge', {
                     method: 'POST',
                     headers: {
                         'Content-Type': 'application/json',
                     },
                     body: JSON.stringify({ fingerprint }),
+                    credentials: 'same-origin'
+                });
+                if (!challengeResponse.ok) {
+                    const data = await challengeResponse.json();
+                    throw new Error(data.error_description || data.error || 'Challenge request failed');
+                }
+
+                const challenge = await challengeResponse.json();
+                const signingKey = await crypto.subtle.importKey(
+                    'pkcs8',
+                    decodeBase64(privateKey),
+                    { name: 'Ed25519' },
+                    false,
+                    ['sign']
+                );
+                const signature = await crypto.subtle.sign(
+                    'Ed25519',
+                    signingKey,
+                    challengeMessage(decodeBase64(challenge.challenge))
+                );
+                privateKeyInput.value = '';
+
+                const response = await fetch('/auth/token', {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json',
+                    },
+                    body: JSON.stringify({
+                        fingerprint,
+                        challenge_id: challenge.challenge_id,
+                        signature: encodeBase64(signature)
+                    }),
                     credentials: 'same-origin' // Ensure cookies are sent/received
                 });
 
@@ -304,7 +368,7 @@
                     submitBtn.textContent = 'Authenticate';
                 }
             } catch (error) {
-                showError('Network error: ' + error.message);
+                showError(error.message || 'Authentication failed');
                 submitBtn.disabled = false;
                 submitBtn.textContent = 'Authenticate';
             }

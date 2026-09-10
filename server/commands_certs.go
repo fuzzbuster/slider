@@ -18,12 +18,11 @@ const (
 )
 
 // CertsCommand implements the 'certs' command
-type CertsCommand struct{}
+type CertsCommand struct{ BaseCommand }
 
-func (c *CertsCommand) Name() string             { return certsCmd }
-func (c *CertsCommand) Description() string      { return certsDesc }
-func (c *CertsCommand) Usage() string            { return certsUsage }
-func (c *CertsCommand) IsRemoteCompletion() bool { return false }
+func (c *CertsCommand) Name() string        { return certsCmd }
+func (c *CertsCommand) Description() string { return certsDesc }
+func (c *CertsCommand) Usage() string       { return certsUsage }
 func (c *CertsCommand) Run(ctx *ExecutionContext, args []string) error {
 	svr := ctx.getServer()
 	ui := ctx.UI()

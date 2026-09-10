@@ -24,12 +24,11 @@ const (
 )
 
 // PortFwdCommand implements the 'portfwd' command
-type PortFwdCommand struct{}
+type PortFwdCommand struct{ BaseCommand }
 
-func (c *PortFwdCommand) Name() string             { return portFwdCmd }
-func (c *PortFwdCommand) Description() string      { return portFwdDesc }
-func (c *PortFwdCommand) Usage() string            { return portFwdUsage }
-func (c *PortFwdCommand) IsRemoteCompletion() bool { return false }
+func (c *PortFwdCommand) Name() string        { return portFwdCmd }
+func (c *PortFwdCommand) Description() string { return portFwdDesc }
+func (c *PortFwdCommand) Usage() string       { return portFwdUsage }
 func (c *PortFwdCommand) Run(ctx *ExecutionContext, args []string) error {
 	svr := ctx.getServer()
 	ui := ctx.UI()
@@ -114,7 +113,7 @@ func (c *PortFwdCommand) Run(ctx *ExecutionContext, args []string) error {
 		totalGlobalTcpIp := 0
 
 		// Local Sessions Listing
-		sessionList := slices.Collect(maps.Values(svr.sessionTrack.Sessions))
+		sessionList := svr.GetAllSessions()
 		for _, sItem := range sessionList {
 			totalGlobalTcpIp += listSessionForwarding(tw, sItem.GetID(), sItem.GetSSHInstance())
 		}

@@ -33,14 +33,17 @@ func (s *server) loadCertJar() error {
 		return fmt.Errorf("failed to load %s file - %v", s.certJarFile, fErr)
 	}
 
-	s.certTrackMutex.Lock()
-	if jErr := json.Unmarshal(file, &s.certTrack.Certs); jErr != nil {
+	certs := make(map[int64]*scrypt.KeyPair)
+	if jErr := json.Unmarshal(file, &certs); jErr != nil {
 		return fmt.Errorf("failed to parse %s file - %v", s.certJarFile, jErr)
 	}
-	s.certTrack.CertActive = int64(len(s.certTrack.Certs))
+
+	s.certTrackMutex.Lock()
+	s.certTrack.Certs = certs
+	s.certTrack.CertActive = int64(len(certs))
 	s.certTrackMutex.Unlock()
 
-	if s.certTrack.CertActive == 0 {
+	if len(certs) == 0 {
 		if _, nErr := s.newCertItem(); nErr != nil {
 			return fmt.Errorf("failed to initialize Certificate Jar - %v", nErr)
 		}
@@ -50,7 +53,7 @@ func (s *server) loadCertJar() error {
 
 	// Calculate latest CertID
 	var ids []int64
-	for i := range s.certTrack.Certs {
+	for i := range certs {
 		ids = append(ids, i)
 	}
 	slices.Sort(ids)
@@ -142,10 +145,30 @@ func (s *server) saveCertJar() {
 }
 
 func (s *server) getCert(certID int64) (*scrypt.KeyPair, error) {
+	s.certTrackMutex.RLock()
+	defer s.certTrackMutex.RUnlock()
+
+	if s.certTrack == nil {
+		return &scrypt.KeyPair{}, fmt.Errorf("certificate registry is not initialized")
+	}
 	if kp, ok := s.certTrack.Certs[certID]; ok {
 		return kp, nil
 	}
 	return &scrypt.KeyPair{}, fmt.Errorf("certID %d not found in cert jar", certID)
+}
+
+func (s *server) getCertByFingerprint(fingerprint string) (int64, *scrypt.KeyPair, bool) {
+	s.certTrackMutex.RLock()
+	defer s.certTrackMutex.RUnlock()
+
+	if s.certTrack == nil {
+		return 0, nil, false
+	}
+	id, ok := scrypt.IsAllowedFingerprint(fingerprint, s.certTrack.Certs)
+	if !ok {
+		return 0, nil, false
+	}
+	return id, s.certTrack.Certs[id], true
 }
 
 func (s *server) savePrivateKey(certID int64) (string, error) {

@@ -20,12 +20,11 @@ const (
 )
 
 // SSHCommand implements the 'ssh' command
-type SSHCommand struct{}
+type SSHCommand struct{ BaseCommand }
 
-func (c *SSHCommand) Name() string             { return sshCmd }
-func (c *SSHCommand) Description() string      { return sshDesc }
-func (c *SSHCommand) Usage() string            { return sshUsage }
-func (c *SSHCommand) IsRemoteCompletion() bool { return false }
+func (c *SSHCommand) Name() string        { return sshCmd }
+func (c *SSHCommand) Description() string { return sshDesc }
+func (c *SSHCommand) Usage() string       { return sshUsage }
 func (c *SSHCommand) Run(ctx *ExecutionContext, args []string) error {
 	svr := ctx.getServer()
 	ui := ctx.UI()

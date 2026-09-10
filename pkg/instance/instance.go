@@ -519,7 +519,8 @@ func (si *Config) handleRequests(sessionClientChannel ssh.Channel, requests <-ch
 			}
 			winChange <- req.Payload
 		case conf.SSHRequestSubsystem:
-			if string(req.Payload[4:]) == conf.SSHChannelSFTP {
+			subsystem, err := types.ParseSSHString(req.Payload)
+			if err == nil && subsystem == conf.SSHChannelSFTP {
 				ok = true
 				go si.channelPipe(sessionClientChannel, conf.SSHChannelSFTP, nil)
 			}
@@ -735,10 +736,7 @@ func (si *Config) ExecuteCommand(cmdBytes []byte, ic io.ReadWriter) error {
 		return fmt.Errorf("no active SSH connection available")
 	}
 
-	// Build command payload
-	cmdLen := len(string(cmdBytes))
-	payload := []byte{0, 0, 0, byte(cmdLen)}
-	payload = append(payload, cmdBytes...)
+	payload := types.MarshalSSHString(string(cmdBytes))
 
 	sliderClientChannel, shellRequests, oErr := sshConn.OpenChannel(conf.SSHRequestExec, payload)
 	if oErr != nil {
@@ -887,7 +885,7 @@ func (si *Config) channelPipeWithStatus(sessionClientChannel ssh.Channel, slider
 	// Process exit-status and return immediately
 	for req := range shellRequests {
 		switch req.Type {
-		case "exit-status":
+		case conf.SSHRequestExitStatus, conf.SSHRequestExitSignal:
 			if sessionClientChannel != nil {
 				_, _ = sessionClientChannel.SendRequest(req.Type, false, req.Payload)
 			}
@@ -1048,10 +1046,13 @@ func (si *Config) clientVerification(conn ssh.ConnMetadata, key ssh.PublicKey) (
 	return nil, fmt.Errorf("client key not authorized")
 }
 
-// ParseSizePayload takes a byte slice as received from an SSH request and returns the width and height of the terminal
-func ParseSizePayload(sizeBytes []byte) (uint32, uint32) {
+// ParseSizePayload decodes terminal dimensions from an SSH window-change payload.
+func ParseSizePayload(sizeBytes []byte) (uint32, uint32, error) {
+	if len(sizeBytes) < 8 {
+		return 0, 0, fmt.Errorf("invalid window-change payload length: %d", len(sizeBytes))
+	}
 	// First 4 bytes are width (cols), next 4 bytes are height (rows)
 	cols := binary.BigEndian.Uint32(sizeBytes)
 	rows := binary.BigEndian.Uint32(sizeBytes[4:])
-	return cols, rows
+	return cols, rows, nil
 }

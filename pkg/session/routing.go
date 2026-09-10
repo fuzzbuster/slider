@@ -87,6 +87,10 @@ func (s *BidirectionalSession) RouteChannel(nc ssh.NewChannel, channelType strin
 		err = s.HandleInitSize(nc)
 
 	case conf.SSHChannelSliderConnect:
+		if !s.peerRole.IsOperator() {
+			s.rejectChannel(nc, channelType, "slider-connect requires an operator peer")
+			return nil
+		}
 		if s.router != nil && s.applicationServer != nil {
 			err = s.router.Route(nc, s, s.applicationServer)
 		} else {

@@ -65,14 +65,18 @@ graph LR
 
 ```go
 // NewSSHClient 建立作为客户端的 SSH 连接 (Gateway 模式)
-func (s *server) NewSSHClient(biSession *session.BidirectionalSession) {
+func (s *server) NewSSHClient(
+    biSession *session.BidirectionalSession,
+    hostKeyCallback ssh.HostKeyCallback,
+    clientSigner ssh.Signer,
+) {
     netConn := sconn.WsConnToNetConn(biSession.GetWebSocketConn())
 
     // 配置 SSH 客户端，使用服务器自身的公钥进行身份验证
     sshConfig := &ssh.ClientConfig{
         User:            "slider-server",
-        Auth:            []ssh.AuthMethod{ssh.PublicKeys(s.serverKey)},
-        HostKeyCallback: ssh.InsecureIgnoreHostKey(),
+        Auth:            []ssh.AuthMethod{ssh.PublicKeys(clientSigner)},
+        HostKeyCallback: hostKeyCallback,
         ClientVersion:   "SSH-slider-server-client",
     }
 
@@ -96,6 +100,8 @@ func (s *server) NewSSHClient(biSession *session.BidirectionalSession) {
     _ = client.Wait()
 }
 ```
+
+出站 Gateway 连接必须提供预期 SSH 指纹；WSS 同时使用系统根证书或显式 CA 验证 TLS。Callback/Listener 连接要求 HTTPS，避免两个传输层同时失去对端身份校验。
 
 ### 递归会话发现
 

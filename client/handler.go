@@ -61,7 +61,7 @@ func (c *client) buildRouter() http.Handler {
 }
 
 func (c *client) handleWebSocket(w http.ResponseWriter, r *http.Request) {
-	upgrader := listener.DefaultWebSocketUpgrader
+	upgrader := listener.NewWebSocketUpgrader()
 
 	wsConn, err := upgrader.Upgrade(w, r, c.httpHeaders)
 	if err != nil {
@@ -80,10 +80,7 @@ func (c *client) handleWebSocket(w http.ResponseWriter, r *http.Request) {
 	session := c.newWebSocketSession(wsConn, true)
 	defer c.dropWebSocketSession(session)
 
-	go c.newSSHClient(session)
-
-	<-session.Disconnect
-	close(session.Disconnect)
+	c.newSSHClient(session)
 }
 
 // getUpstreamSession returns the active session connected to the server

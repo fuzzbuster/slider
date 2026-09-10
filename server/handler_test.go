@@ -3,8 +3,10 @@ package server
 import (
 	"net/http"
 	"net/http/httptest"
+	"net/url"
 	"testing"
 
+	"slider/pkg/conf"
 	"slider/pkg/listener"
 	"slider/pkg/slog"
 )
@@ -34,6 +36,12 @@ func TestHandler_AuthRoutes(t *testing.T) {
 			authOn:       true,
 			path:         listener.AuthLoginPath,
 			expectedCode: http.StatusMethodNotAllowed, // GET on POST-only endpoint
+		},
+		{
+			name:         "AuthOn_AuthChallenge",
+			authOn:       true,
+			path:         listener.AuthChallengePath,
+			expectedCode: http.StatusMethodNotAllowed,
 		},
 		{
 			name:         "AuthOff_AuthLogin",
@@ -75,6 +83,38 @@ func TestHandler_AuthRoutes(t *testing.T) {
 				if w.Code == http.StatusNotFound {
 					t.Errorf("Expected route to exist for path %s when authOn=%v, but got 404", tc.path, tc.authOn)
 				}
+			}
+		})
+	}
+}
+
+func TestGatewayOperatorRequiresAuthentication(t *testing.T) {
+	for _, tc := range []struct {
+		name       string
+		authOn     bool
+		wantRouted bool
+	}{
+		{name: "authentication disabled", authOn: false, wantRouted: false},
+		{name: "authentication enabled", authOn: true, wantRouted: true},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			s := &server{
+				Logger:      slog.NewLogger("gateway-route-test"),
+				authOn:      tc.authOn,
+				gateway:     true,
+				customProto: conf.Proto,
+				urlRedirect: &url.URL{},
+			}
+			request := httptest.NewRequest(http.MethodGet, "/gateway", nil)
+			request.Header.Set("Upgrade", "websocket")
+			request.Header.Set("Sec-WebSocket-Protocol", conf.Proto)
+			request.Header.Set("Sec-WebSocket-Operation", conf.OperationOperator)
+			recorder := httptest.NewRecorder()
+
+			s.buildRouter().ServeHTTP(recorder, request)
+			routed := recorder.Code != http.StatusNotFound
+			if routed != tc.wantRouted {
+				t.Fatalf("routed = %v, want %v (status %d)", routed, tc.wantRouted, recorder.Code)
 			}
 		})
 	}

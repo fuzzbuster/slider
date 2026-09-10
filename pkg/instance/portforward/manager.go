@@ -24,7 +24,6 @@ type Manager struct {
 	conn           ChannelOpener
 	remoteMappings map[string]*RemoteForward
 	localMappings  map[string]*LocalForward
-	forwardedTx    *ForwardedTx
 	mutex          sync.Mutex
 }
 
@@ -34,17 +33,18 @@ type ChannelOpener interface {
 	SendRequest(name string, wantReply bool, payload []byte) (bool, []byte, error)
 }
 
-// ForwardedTx tracks forwarded SSH channels
-type ForwardedTx struct {
-	ForwardedSshChannel ssh.Channel
-	ForwardingMutex     sync.Mutex
-}
-
 // RemoteForward represents a remote (reverse) port forward
 type RemoteForward struct {
-	RcvChan  chan *types.TcpIpChannelMsg
-	DoneChan chan bool
+	RcvChan    chan *types.CustomTcpIpChannelMsg
+	CancelChan chan struct{}
+	cancelOnce sync.Once
 	*types.CustomTcpIpChannelMsg
+}
+
+func (f *RemoteForward) cancel() {
+	f.cancelOnce.Do(func() {
+		close(f.CancelChan)
+	})
 }
 
 // LocalForward represents a local port forward
@@ -63,15 +63,7 @@ func NewManager(logger *slog.Logger, sessionID int64, conn ChannelOpener) *Manag
 		conn:           conn,
 		remoteMappings: make(map[string]*RemoteForward),
 		localMappings:  make(map[string]*LocalForward),
-		forwardedTx:    &ForwardedTx{},
 	}
-}
-
-// SetForwardedChannel sets the forwarded SSH channel for the manager
-func (m *Manager) SetForwardedChannel(channel ssh.Channel) {
-	m.forwardedTx.ForwardingMutex.Lock()
-	m.forwardedTx.ForwardedSshChannel = channel
-	m.forwardedTx.ForwardingMutex.Unlock()
 }
 
 func newProtocolPortKey(protocol string, port uint32) string {
@@ -85,8 +77,8 @@ func (m *Manager) AddRemoteForward(t *types.TcpIpChannelMsg, isSshConn bool, pro
 
 	key := newProtocolPortKey(protocol, t.SrcPort)
 	m.remoteMappings[key] = &RemoteForward{
-		RcvChan:  make(chan *types.TcpIpChannelMsg, 5),
-		DoneChan: make(chan bool, 5),
+		RcvChan:    make(chan *types.CustomTcpIpChannelMsg, 5),
+		CancelChan: make(chan struct{}),
 		CustomTcpIpChannelMsg: &types.CustomTcpIpChannelMsg{
 			Protocol:        protocol,
 			IsSshConn:       isSshConn,
@@ -99,7 +91,11 @@ func (m *Manager) AddRemoteForward(t *types.TcpIpChannelMsg, isSshConn bool, pro
 func (m *Manager) GetRemoteMappings() map[string]*RemoteForward {
 	m.mutex.Lock()
 	defer m.mutex.Unlock()
-	return m.remoteMappings
+	result := make(map[string]*RemoteForward, len(m.remoteMappings))
+	for key, mapping := range m.remoteMappings {
+		result[key] = mapping
+	}
+	return result
 }
 
 // GetRemoteMapping returns a specific remote port forward mapping
@@ -136,7 +132,11 @@ func (m *Manager) AddLocalForward(t *types.TcpIpChannelMsg, listener io.Closer, 
 func (m *Manager) GetLocalMappings() map[string]*LocalForward {
 	m.mutex.Lock()
 	defer m.mutex.Unlock()
-	return m.localMappings
+	result := make(map[string]*LocalForward, len(m.localMappings))
+	for key, mapping := range m.localMappings {
+		result[key] = mapping
+	}
+	return result
 }
 
 // GetLocalMapping returns a specific local port forward mapping
@@ -226,7 +226,14 @@ func (m *Manager) StartRemoteForward(msg types.CustomTcpIpChannelMsg, notifier c
 
 	control, _ := m.GetRemoteMapping(msg.Protocol, msg.SrcPort)
 
-	for range control.RcvChan {
+	for {
+		var forwarded *types.CustomTcpIpChannelMsg
+		select {
+		case <-control.CancelChan:
+			return
+		case forwarded = <-control.RcvChan:
+		}
+
 		conn, cErr := net.Dial(msg.Protocol, net.JoinHostPort(msg.DstHost, strconv.Itoa(int(msg.DstPort))))
 		if cErr != nil {
 			m.logger.ErrorWith("Failed to connect to host",
@@ -234,24 +241,23 @@ func (m *Manager) StartRemoteForward(msg types.CustomTcpIpChannelMsg, notifier c
 				slog.F("dst_host", msg.DstHost),
 				slog.F("dst_port", msg.DstPort),
 				slog.F("err", cErr))
-			control.DoneChan <- true
+			close(forwarded.Done)
 			continue
 		}
 
-		// Connect the two channels
-		go func() {
+		go func(conn net.Conn, forwarded *types.CustomTcpIpChannelMsg) {
 			defer func() {
 				_ = conn.Close()
+				close(forwarded.Done)
 			}()
-			_, _ = sio.PipeWithCancel(conn, m.forwardedTx.ForwardedSshChannel)
+			_, _ = sio.PipeWithCancel(conn, forwarded.Channel)
 			m.logger.DebugWith("Completed MSG Forwarded channel",
 				slog.F("session_id", m.sessionID),
 				slog.F("src_host", msg.SrcHost),
 				slog.F("src_port", msg.SrcPort),
 				slog.F("dst_host", msg.DstHost),
 				slog.F("dst_port", msg.DstPort))
-			control.DoneChan <- true
-		}()
+		}(conn, forwarded)
 	}
 }
 
@@ -481,8 +487,7 @@ func (m *Manager) CancelRemoteForward(protocol string, port uint32) error {
 		slog.F("request_channel", conf.SSHRequestCancelTcpIpForward),
 		slog.F("fwd_port", control.SrcPort))
 
-	close(control.RcvChan)
-	close(control.DoneChan)
+	control.cancel()
 
 	// Remove from map after successfully closing the port forward
 	m.RemoveRemoteForward(protocol, port)
@@ -547,12 +552,7 @@ func (m *Manager) CloseAll() {
 
 	// Close Remote Mappings
 	for key, fwd := range m.remoteMappings {
-		// Signal done loop
-		select {
-		case fwd.DoneChan <- true:
-		default:
-		}
-		close(fwd.RcvChan)
+		fwd.cancel()
 		delete(m.remoteMappings, key)
 	}
 }

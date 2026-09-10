@@ -1,6 +1,8 @@
 package server
 
 import (
+	"crypto/rand"
+	"encoding/base64"
 	"encoding/json"
 	"fmt"
 	"net/http"
@@ -9,144 +11,202 @@ import (
 	"slider/pkg/auth"
 	"slider/pkg/scrypt"
 	"slider/pkg/slog"
+
+	"golang.org/x/crypto/ssh"
 )
 
 const (
-	// DefaultTokenLifetime is the default JWT token validity period
-	DefaultTokenLifetime = 24 * time.Hour
+	DefaultTokenLifetime  = 24 * time.Hour
+	authChallengeLifetime = 2 * time.Minute
+	maxAuthChallenges     = 1024
+	maxAuthRequestSize    = 16 << 10
 )
 
-// TokenResponse is the JSON response for token exchange
 type TokenResponse struct {
 	Token     string `json:"token"`
 	ExpiresAt string `json:"expires_at"`
 	TokenType string `json:"token_type"`
 }
 
-// ErrorResponse is the JSON response for errors
 type ErrorResponse struct {
 	Error            string `json:"error"`
 	ErrorDescription string `json:"error_description,omitempty"`
 }
 
-// TokenRequest is the JSON request for web clients
-type TokenRequest struct {
+type ChallengeRequest struct {
 	Fingerprint string `json:"fingerprint"`
 }
 
-// handleAuthToken exchanges a certificate fingerprint for a JWT token
-// POST /auth/token
-// Supports two authentication methods:
-//  1. Header: X-Certificate-Fingerprint: <fingerprint> (API clients)
-//  2. JSON body: {"fingerprint": "<fingerprint>"} (web clients)
-//
-// For web clients, sets JWT as httpOnly cookie in addition to JSON response
-func (s *server) handleAuthToken(w http.ResponseWriter, r *http.Request) {
-	// Only allow POST
+type ChallengeResponse struct {
+	ChallengeID string `json:"challenge_id"`
+	Challenge   string `json:"challenge"`
+	ExpiresAt   string `json:"expires_at"`
+}
+
+type TokenRequest struct {
+	Fingerprint string `json:"fingerprint"`
+	ChallengeID string `json:"challenge_id"`
+	Signature   string `json:"signature"`
+}
+
+type authChallenge struct {
+	fingerprint string
+	challenge   []byte
+	expiresAt   time.Time
+}
+
+func (s *server) handleAuthChallenge(w http.ResponseWriter, r *http.Request) {
 	if r.Method != http.MethodPost {
 		w.Header().Set("Allow", "POST")
 		http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
 		return
 	}
 
-	// Extract fingerprint from header (API client) or JSON body (web client)
-	fingerprint := r.Header.Get("X-Certificate-Fingerprint")
-	isWebClient := false
-
-	if fingerprint == "" {
-		// Try to parse JSON body
-		var req TokenRequest
-		if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
-			s.DebugWith("Auth token request rejected: invalid request format",
-				slog.F("remote_addr", r.RemoteAddr),
-				slog.F("err", err))
-			sendErrorJSON(w, http.StatusBadRequest, "invalid_request", "Missing X-Certificate-Fingerprint header or valid JSON body")
-			return
-		}
-		fingerprint = req.Fingerprint
-		isWebClient = true
-	}
-
-	if fingerprint == "" {
-		s.DebugWith("Auth token request rejected: missing fingerprint",
-			slog.F("remote_addr", r.RemoteAddr))
-		sendErrorJSON(w, http.StatusBadRequest, "invalid_request", "Missing fingerprint in request")
+	r.Body = http.MaxBytesReader(w, r.Body, maxAuthRequestSize)
+	var request ChallengeRequest
+	if err := json.NewDecoder(r.Body).Decode(&request); err != nil || request.Fingerprint == "" {
+		sendErrorJSON(w, http.StatusBadRequest, "invalid_request", "Missing fingerprint")
 		return
 	}
 
-	// Validate fingerprint against server fingerprint first (id=0)
-	var certID int64
-	if fingerprint != s.fingerprint {
-		// Validate fingerprint against cert jar
-		if s.certTrack == nil || len(s.certTrack.Certs) == 0 {
-			s.DebugWith("Auth token request rejected: no certificates available",
-				slog.F("remote_addr", r.RemoteAddr),
-				slog.F("fingerprint", fingerprint))
-			sendErrorJSON(w, http.StatusUnauthorized, "unauthorized", "No certificates available for validation")
-			return
-		}
-
-		var ok bool
-		certID, ok = scrypt.IsAllowedFingerprint(fingerprint, s.certTrack.Certs)
-		if !ok {
-			s.DebugWith("Auth token request rejected: invalid fingerprint",
-				slog.F("remote_addr", r.RemoteAddr),
-				slog.F("fingerprint", fingerprint))
-			sendErrorJSON(w, http.StatusUnauthorized, "invalid_fingerprint", "Certificate fingerprint not found")
-			return
-		}
+	if _, _, ok := s.getCertByFingerprint(request.Fingerprint); !ok {
+		sendErrorJSON(w, http.StatusUnauthorized, "invalid_fingerprint", "Certificate fingerprint not found")
+		return
 	}
 
-	// Generate JWT token
-	claims := auth.NewClaims("slider-server", fingerprint, certID, DefaultTokenLifetime)
+	challenge := make([]byte, 32)
+	if _, err := rand.Read(challenge); err != nil {
+		sendErrorJSON(w, http.StatusInternalServerError, "server_error", "Failed to create challenge")
+		return
+	}
+	challengeIDBytes := make([]byte, 24)
+	if _, err := rand.Read(challengeIDBytes); err != nil {
+		sendErrorJSON(w, http.StatusInternalServerError, "server_error", "Failed to create challenge")
+		return
+	}
+
+	now := time.Now()
+	expiresAt := now.Add(authChallengeLifetime)
+	challengeID := base64.RawURLEncoding.EncodeToString(challengeIDBytes)
+
+	s.authChallengeMutex.Lock()
+	if s.authChallenges == nil {
+		s.authChallenges = make(map[string]authChallenge)
+	}
+	for id, pending := range s.authChallenges {
+		if !pending.expiresAt.After(now) {
+			delete(s.authChallenges, id)
+		}
+	}
+	if len(s.authChallenges) >= maxAuthChallenges {
+		s.authChallengeMutex.Unlock()
+		sendErrorJSON(w, http.StatusServiceUnavailable, "server_busy", "Too many pending authentication attempts")
+		return
+	}
+	s.authChallenges[challengeID] = authChallenge{
+		fingerprint: request.Fingerprint,
+		challenge:   challenge,
+		expiresAt:   expiresAt,
+	}
+	s.authChallengeMutex.Unlock()
+
+	w.Header().Set("Content-Type", "application/json")
+	_ = json.NewEncoder(w).Encode(ChallengeResponse{
+		ChallengeID: challengeID,
+		Challenge:   base64.RawStdEncoding.EncodeToString(challenge),
+		ExpiresAt:   expiresAt.Format(time.RFC3339),
+	})
+}
+
+// handleAuthToken verifies proof of private-key possession and issues a JWT.
+func (s *server) handleAuthToken(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodPost {
+		w.Header().Set("Allow", "POST")
+		http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
+		return
+	}
+
+	r.Body = http.MaxBytesReader(w, r.Body, maxAuthRequestSize)
+	var request TokenRequest
+	if err := json.NewDecoder(r.Body).Decode(&request); err != nil ||
+		request.Fingerprint == "" || request.ChallengeID == "" || request.Signature == "" {
+		sendErrorJSON(w, http.StatusBadRequest, "invalid_request", "Fingerprint, challenge ID and signature are required")
+		return
+	}
+
+	s.authChallengeMutex.Lock()
+	pending, ok := s.authChallenges[request.ChallengeID]
+	delete(s.authChallenges, request.ChallengeID)
+	s.authChallengeMutex.Unlock()
+	if !ok || pending.fingerprint != request.Fingerprint || !pending.expiresAt.After(time.Now()) {
+		sendErrorJSON(w, http.StatusUnauthorized, "invalid_challenge", "Challenge is invalid or expired")
+		return
+	}
+
+	certID, keyPair, ok := s.getCertByFingerprint(request.Fingerprint)
+	if !ok {
+		sendErrorJSON(w, http.StatusUnauthorized, "invalid_fingerprint", "Certificate fingerprint not found")
+		return
+	}
+
+	signature, err := base64.RawStdEncoding.DecodeString(request.Signature)
+	if err != nil {
+		sendErrorJSON(w, http.StatusBadRequest, "invalid_signature", "Signature encoding is invalid")
+		return
+	}
+	signer, err := scrypt.SignerFromKey(keyPair.PrivateKey)
+	if err != nil {
+		s.ErrorWith("Failed to load authentication key", slog.F("cert_id", certID), slog.F("err", err))
+		sendErrorJSON(w, http.StatusInternalServerError, "server_error", "Failed to validate signature")
+		return
+	}
+	if err := signer.PublicKey().Verify(auth.ChallengeMessage(pending.challenge), &ssh.Signature{
+		Format: signer.PublicKey().Type(),
+		Blob:   signature,
+	}); err != nil {
+		sendErrorJSON(w, http.StatusUnauthorized, "invalid_signature", "Signature verification failed")
+		return
+	}
+
+	claims := auth.NewClaims("slider-server", request.Fingerprint, certID, DefaultTokenLifetime)
 	token, err := auth.Encode(claims, s.getJWTSecret())
 	if err != nil {
 		s.ErrorWith("Failed to encode JWT token",
-			slog.F("fingerprint", fingerprint),
+			slog.F("fingerprint", request.Fingerprint),
 			slog.F("cert_id", certID),
 			slog.F("err", err))
 		sendErrorJSON(w, http.StatusInternalServerError, "server_error", "Failed to generate token")
 		return
 	}
 
-	// Log successful authentication
 	s.DebugWith("Issued JWT token",
 		slog.F("remote_addr", r.RemoteAddr),
-		slog.F("fingerprint", fingerprint),
-		slog.F("cert_id", certID),
-		slog.F("web_client", isWebClient))
+		slog.F("fingerprint", request.Fingerprint),
+		slog.F("cert_id", certID))
 
-	// For web clients, set httpOnly cookie
-	if isWebClient {
-		http.SetCookie(w, &http.Cookie{
-			Name:     SliderTokenCookie,
-			Value:    token,
-			Path:     "/",
-			MaxAge:   int(DefaultTokenLifetime.Seconds()),
-			HttpOnly: true,
-			Secure:   r.TLS != nil, // Only set Secure flag if request is over HTTPS
-			SameSite: http.SameSiteStrictMode,
-		})
-	}
-
-	// Send JSON response (for both web and API clients)
-	response := TokenResponse{
-		Token:     token,
-		ExpiresAt: time.Unix(claims.ExpiresAt, 0).Format(time.RFC3339),
-		TokenType: "Bearer",
-	}
+	http.SetCookie(w, &http.Cookie{
+		Name:     SliderTokenCookie,
+		Value:    token,
+		Path:     "/",
+		MaxAge:   int(DefaultTokenLifetime.Seconds()),
+		HttpOnly: true,
+		Secure:   true,
+		SameSite: http.SameSiteStrictMode,
+	})
 
 	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(http.StatusOK)
-	_ = json.NewEncoder(w).Encode(response)
+	_ = json.NewEncoder(w).Encode(TokenResponse{
+		Token:     token,
+		ExpiresAt: time.Unix(claims.ExpiresAt, 0).Format(time.RFC3339),
+		TokenType: "Bearer",
+	})
 }
 
-// getJWTSecret derives the JWT signing secret from the CA private key
 func (s *server) getJWTSecret() []byte {
 	return auth.DeriveSecret(s.CertificateAuthority.CAPrivateKey, "slider-jwt-v1")
 }
 
-// sendErrorJSON sends a JSON error response
 func sendErrorJSON(w http.ResponseWriter, statusCode int, errorCode, description string) {
 	response := ErrorResponse{
 		Error:            errorCode,
@@ -158,47 +218,35 @@ func sendErrorJSON(w http.ResponseWriter, statusCode int, errorCode, description
 	_ = json.NewEncoder(w).Encode(response)
 }
 
-// validateToken attempts to validate the token as a JWT first, then as a raw fingerprint
-// Returns: fingerprint, certID, error
+// validateToken validates a JWT and confirms its certificate is still authorized.
 func (s *server) validateToken(token string) (string, int64, error) {
-	// Try to decode as JWT first
 	claims, err := auth.Decode(token, s.getJWTSecret())
-	if err == nil {
-		// JWT is valid, extract fingerprint and certID
-		return claims.Subject, claims.CertID, nil
+	if err != nil {
+		return "", 0, err
 	}
 
-	// JWT validation failed, try as raw fingerprint for backward compatibility
-	if s.certTrack == nil || len(s.certTrack.Certs) == 0 {
-		return "", 0, fmt.Errorf("no certificates available for validation")
+	keyPair, err := s.getCert(claims.CertID)
+	if err != nil || keyPair.FingerPrint != claims.Subject {
+		return "", 0, fmt.Errorf("certificate is no longer authorized")
 	}
 
-	certID, ok := scrypt.IsAllowedFingerprint(token, s.certTrack.Certs)
-	if !ok {
-		return "", 0, fmt.Errorf("invalid fingerprint")
-	}
-
-	// Token is a valid fingerprint
-	return token, certID, nil
+	return claims.Subject, claims.CertID, nil
 }
 
-// handleLogout clears the authentication cookie
-// POST /auth/logout
 func (s *server) handleLogout(w http.ResponseWriter, r *http.Request) {
-	// Only allow POST
 	if r.Method != http.MethodPost {
 		w.Header().Set("Allow", "POST")
 		http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
 		return
 	}
 
-	// Clear the cookie by setting it with a past expiration
 	http.SetCookie(w, &http.Cookie{
 		Name:     SliderTokenCookie,
 		Value:    "",
 		Path:     "/",
-		MaxAge:   -1, // Immediately expire
+		MaxAge:   -1,
 		HttpOnly: true,
+		Secure:   true,
 		SameSite: http.SameSiteStrictMode,
 	})
 

@@ -1,17 +1,22 @@
 package cmd
 
 import (
+	"bytes"
+	"crypto/rand"
 	"crypto/tls"
 	"crypto/x509"
+	"encoding/base64"
 	"encoding/json"
 	"fmt"
 	"io"
 	"net/http"
 	"net/url"
 	"os"
-	"strings"
+	"sync"
 
+	"slider/pkg/auth"
 	"slider/pkg/listener"
+	"slider/pkg/scrypt"
 
 	"github.com/gorilla/websocket"
 	"github.com/spf13/cobra"
@@ -32,6 +37,7 @@ and provides access to a remote slider console through your local terminal.
 // Hook flags
 var (
 	hookFingerprint string
+	hookAuthKey     string
 	hookClientCert  string
 	hookClientKey   string
 	hookCA          string
@@ -43,16 +49,15 @@ func init() {
 
 	// Define flags
 	hookCmd.Flags().StringVar(&hookFingerprint, "fingerprint", "", "Certificate fingerprint for authentication")
+	hookCmd.Flags().StringVar(&hookAuthKey, "auth-key", "", "Slider private key for challenge signing")
 	hookCmd.Flags().StringVar(&hookClientCert, "client-cert", "", "Client certificate for mTLS")
 	hookCmd.Flags().StringVar(&hookClientKey, "client-key", "", "Client private key for mTLS")
 	hookCmd.Flags().StringVar(&hookCA, "ca", "", "CA certificate for server verification")
 	hookCmd.Flags().StringVar(&hookServerName, "server-name", "", "Server name for TLS verification")
 
 	// Mark flag dependencies
+	hookCmd.MarkFlagsRequiredTogether("fingerprint", "auth-key")
 	hookCmd.MarkFlagsRequiredTogether("client-cert", "client-key")
-	if hookServerName != "" {
-		hookCmd.MarkFlagsRequiredTogether("ca", "server-name")
-	}
 }
 
 func runHook(_ *cobra.Command, args []string) error {
@@ -64,11 +69,19 @@ func runHook(_ *cobra.Command, args []string) error {
 		return fmt.Errorf("invalid server URL: %w", err)
 	}
 
-	// Get authentication token if fingerprint is provided
+	// Get authentication token if certificate authentication is configured.
 	var token string
 	var tlsConfig *tls.Config
 	if hookFingerprint != "" {
-		token, tlsConfig, err = getAuthToken(parsedURL, hookFingerprint, hookClientCert, hookClientKey, hookCA, hookServerName)
+		token, tlsConfig, err = getAuthToken(
+			parsedURL,
+			hookFingerprint,
+			hookAuthKey,
+			hookClientCert,
+			hookClientKey,
+			hookCA,
+			hookServerName,
+		)
 		if err != nil {
 			return fmt.Errorf("authentication failed: %w", err)
 		}
@@ -82,25 +95,20 @@ func runHook(_ *cobra.Command, args []string) error {
 	return nil
 }
 
-// getAuthToken exchanges a fingerprint for a JWT token
-func getAuthToken(baseURL *url.URL, fingerprint, certPath, keyPath, caPath, serverName string) (string, *tls.Config, error) {
-	// Build auth token endpoint URL
-	authURL := *baseURL
-	authURL.Path = "/auth/token"
-
-	// Create request body
-	reqBody := map[string]string{
-		"fingerprint": fingerprint,
-	}
-	jsonData, err := json.Marshal(reqBody)
-	if err != nil {
-		return "", nil, fmt.Errorf("failed to marshal request: %w", err)
-	}
-
-	// Configure HTTP client with mTLS if needed
+// getAuthToken proves possession of a Slider private key and obtains a JWT.
+func getAuthToken(
+	baseURL *url.URL,
+	fingerprint string,
+	authKey string,
+	certPath string,
+	keyPath string,
+	caPath string,
+	serverName string,
+) (string, *tls.Config, error) {
 	client := &http.Client{}
 	tlsConfig := &tls.Config{}
-	if (certPath != "" && keyPath != "") || caPath != "" {
+	var err error
+	if (certPath != "" && keyPath != "") || caPath != "" || serverName != "" {
 		tlsConfig, err = buildTLSConfig(certPath, keyPath, caPath, serverName)
 		if err != nil {
 			return "", nil, err
@@ -110,35 +118,76 @@ func getAuthToken(baseURL *url.URL, fingerprint, certPath, keyPath, caPath, serv
 		}
 	}
 
-	// Make request
-	req, err := http.NewRequest("POST", authURL.String(), strings.NewReader(string(jsonData)))
+	challengeURL := *baseURL
+	challengeURL.Path = listener.AuthChallengePath
+	challengeURL.RawQuery = ""
+	var challengeResp struct {
+		ChallengeID string `json:"challenge_id"`
+		Challenge   string `json:"challenge"`
+	}
+	if err := doJSONPost(client, challengeURL.String(), map[string]string{
+		"fingerprint": fingerprint,
+	}, &challengeResp); err != nil {
+		return "", nil, fmt.Errorf("failed to obtain challenge: %w", err)
+	}
+
+	challenge, err := base64.RawStdEncoding.DecodeString(challengeResp.Challenge)
 	if err != nil {
-		return "", nil, fmt.Errorf("failed to create request: %w", err)
+		return "", nil, fmt.Errorf("failed to decode challenge: %w", err)
 	}
-	req.Header.Set("Content-Type", "application/json")
-
-	resp, err := client.Do(req)
+	signer, err := scrypt.SignerFromKey(authKey)
 	if err != nil {
-		return "", nil, fmt.Errorf("failed to send request: %w", err)
+		return "", nil, fmt.Errorf("failed to load authentication key: %w", err)
 	}
-	defer func() { _ = resp.Body.Close() }()
-
-	if resp.StatusCode != http.StatusOK {
-		body, _ := io.ReadAll(resp.Body)
-		return "", nil, fmt.Errorf("authentication failed (status %d): %s", resp.StatusCode, string(body))
+	signature, err := signer.Sign(rand.Reader, auth.ChallengeMessage(challenge))
+	if err != nil {
+		return "", nil, fmt.Errorf("failed to sign challenge: %w", err)
 	}
 
-	// Parse response
+	authURL := *baseURL
+	authURL.Path = listener.AuthLoginPath
+	authURL.RawQuery = ""
 	var tokenResp struct {
 		Token     string `json:"token"`
 		ExpiresAt string `json:"expires_at"`
 		TokenType string `json:"token_type"`
 	}
-	if err := json.NewDecoder(resp.Body).Decode(&tokenResp); err != nil {
-		return "", nil, fmt.Errorf("failed to parse response: %w", err)
+	if err := doJSONPost(client, authURL.String(), map[string]string{
+		"fingerprint":  fingerprint,
+		"challenge_id": challengeResp.ChallengeID,
+		"signature":    base64.RawStdEncoding.EncodeToString(signature.Blob),
+	}, &tokenResp); err != nil {
+		return "", nil, fmt.Errorf("authentication failed: %w", err)
 	}
 
 	return tokenResp.Token, tlsConfig, nil
+}
+
+func doJSONPost(client *http.Client, endpoint string, requestBody any, responseBody any) error {
+	jsonData, err := json.Marshal(requestBody)
+	if err != nil {
+		return fmt.Errorf("failed to marshal request: %w", err)
+	}
+	req, err := http.NewRequest(http.MethodPost, endpoint, bytes.NewReader(jsonData))
+	if err != nil {
+		return fmt.Errorf("failed to create request: %w", err)
+	}
+	req.Header.Set("Content-Type", "application/json")
+
+	resp, err := client.Do(req)
+	if err != nil {
+		return fmt.Errorf("failed to send request: %w", err)
+	}
+	defer func() { _ = resp.Body.Close() }()
+
+	if resp.StatusCode != http.StatusOK {
+		body, _ := io.ReadAll(resp.Body)
+		return fmt.Errorf("status %d: %s", resp.StatusCode, string(body))
+	}
+	if err := json.NewDecoder(resp.Body).Decode(responseBody); err != nil {
+		return fmt.Errorf("failed to parse response: %w", err)
+	}
+	return nil
 }
 
 // buildTLSConfig creates a TLS configuration for mTLS
@@ -169,11 +218,6 @@ func buildTLSConfig(certPath, keyPath, caPath, serverName string) (*tls.Config, 
 			return nil, fmt.Errorf("failed to load client certificate: %w", err)
 		}
 		tlsConfig.Certificates = []tls.Certificate{cert}
-
-		// If CA is not provided, skip verification
-		if caPath == "" {
-			tlsConfig.InsecureSkipVerify = true
-		}
 	}
 
 	return tlsConfig, nil
@@ -187,23 +231,20 @@ func connectToConsole(baseURL *url.URL, token string, tlsConfig *tls.Config) err
 		return fmt.Errorf("failed to convert URL to WebSocket: %w", err)
 	}
 	wsURL.Path = listener.ConsoleWsPath
+	wsURL.RawQuery = ""
 
-	// Add token as query parameter if available
+	headers := http.Header{}
 	if token != "" {
-		query := wsURL.Query()
-		query.Set("token", token)
-		wsURL.RawQuery = query.Encode()
+		headers.Set("Authorization", "Bearer "+token)
 	}
 
-	// Configure WebSocket dialer
-	dialer := websocket.DefaultDialer
+	dialer := *websocket.DefaultDialer
 	if wsURL.Scheme == "wss" {
 		dialer.TLSClientConfig = tlsConfig
 	}
 
-	// Connect to WebSocket
-	fmt.Printf("Connecting to %s...\n", wsURL.String())
-	wsConn, _, err := dialer.Dial(wsURL.String(), nil)
+	fmt.Printf("Connecting to %s://%s%s...\n", wsURL.Scheme, wsURL.Host, wsURL.Path)
+	wsConn, _, err := dialer.Dial(wsURL.String(), headers)
 	if err != nil {
 		return fmt.Errorf("failed to connect to WebSocket: %w", err)
 	}
@@ -227,6 +268,13 @@ func connectToConsole(baseURL *url.URL, token string, tlsConfig *tls.Config) err
 
 	// Channel to signal connection closed (from either side)
 	connClosed := make(chan struct{})
+
+	var writeMutex sync.Mutex
+	writeMessage := func(messageType int, data []byte) error {
+		writeMutex.Lock()
+		defer writeMutex.Unlock()
+		return wsConn.WriteMessage(messageType, data)
+	}
 
 	// Goroutine: WebSocket → Stdout (remote output)
 	go func() {
@@ -264,7 +312,7 @@ func connectToConsole(baseURL *url.URL, token string, tlsConfig *tls.Config) err
 				}
 
 				if n > 0 {
-					if err := wsConn.WriteMessage(websocket.TextMessage, buf[:n]); err != nil {
+					if err := writeMessage(websocket.TextMessage, buf[:n]); err != nil {
 						// Connection closed - exit gracefully
 						return
 					}
@@ -274,10 +322,10 @@ func connectToConsole(baseURL *url.URL, token string, tlsConfig *tls.Config) err
 	}()
 
 	// Goroutine: Handle terminal resize
-	go monitorWindowResize(wsConn, done)
+	go monitorWindowResize(writeMessage, done)
 
 	// Send initial terminal size
-	sendTermSize(wsConn)
+	sendTermSize(writeMessage)
 
 	// Connection closed by server (e.g., exit command) - this is normal
 	<-connClosed
@@ -288,7 +336,7 @@ func connectToConsole(baseURL *url.URL, token string, tlsConfig *tls.Config) err
 	return nil
 }
 
-func sendTermSize(conn *websocket.Conn) {
+func sendTermSize(writeMessage func(int, []byte) error) {
 	width, height, err := term.GetSize(int(os.Stdin.Fd()))
 	if err == nil {
 		// Use struct to ensure consistent JSON field ordering
@@ -302,7 +350,7 @@ func sendTermSize(conn *websocket.Conn) {
 			Rows: height,
 		}
 		if data, err := json.Marshal(resizeMsg); err == nil {
-			_ = conn.WriteMessage(websocket.TextMessage, data)
+			_ = writeMessage(websocket.TextMessage, data)
 		}
 	}
 }

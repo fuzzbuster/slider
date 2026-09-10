@@ -26,9 +26,7 @@ import (
 )
 
 type sessionTrack struct {
-	SessionCount  int64                                   // Number of Sessions created
-	SessionActive int64                                   // Number of Active Sessions
-	Sessions      map[int64]*session.BidirectionalSession // Map of Sessions
+	Sessions map[int64]*session.BidirectionalSession // Map of Sessions
 }
 
 type client struct {
@@ -44,7 +42,6 @@ type client struct {
 	sessionTrackMutex sync.Mutex
 	isListener        bool
 	isBeacon          bool
-	firstRun          bool
 	customProto       string
 	interpreter       *interpreter.Interpreter
 	*listenerConf
@@ -85,10 +82,6 @@ func (c *client) startConnection(customDNS string) {
 			slog.F("ip", ip))
 	}
 
-	if wsURL.Scheme == "wss" {
-		c.wsConfig.TLSClientConfig.InsecureSkipVerify = true
-	}
-
 	wsConn, _, cErr := c.wsConfig.DialContext(context.Background(), wsURLStr, c.httpHeaders)
 	if cErr != nil {
 		c.Logger.ErrorWith("Can't connect to Server address",
@@ -96,6 +89,7 @@ func (c *client) startConnection(customDNS string) {
 		return
 	}
 	sess := c.newWebSocketSession(wsConn, false) // outbound connection is NEVER a listener session
+	defer c.dropWebSocketSession(sess)
 
 	// Block until SSH connection closes
 	c.newSSHClient(sess)
@@ -124,8 +118,6 @@ func (c *client) newSSHClient(sess *session.BidirectionalSession) {
 	// Update the existing session with the SSH client
 	sess.SetSSHClient(sshClient)
 
-	defer func() { _ = sess.Close() }()
-
 	c.Logger.InfoWith("Server connected",
 		slog.F("remote_addr", wsConn.RemoteAddr().String()))
 	c.Logger.DebugWith("SSH connection established",
@@ -137,10 +129,6 @@ func (c *client) newSSHClient(sess *session.BidirectionalSession) {
 
 	// Set keepalive after connection is established
 	go sess.KeepAlive(c.keepalive)
-
-	if c.firstRun {
-		c.firstRun = false
-	}
 
 	// Use centralized channel routing
 	go sess.HandleIncomingChannels(newChan)
@@ -171,19 +159,22 @@ func (c *client) newWebSocketSession(wsConn *websocket.Conn, isListenerSession b
 }
 
 func (c *client) dropWebSocketSession(sess *session.BidirectionalSession) {
-	c.sessionTrackMutex.Lock()
-	defer c.sessionTrackMutex.Unlock()
-
 	sessionID := sess.GetID()
+	remoteAddr := ""
+	if wsConn := sess.GetWebSocketConn(); wsConn != nil && wsConn.RemoteAddr() != nil {
+		remoteAddr = wsConn.RemoteAddr().String()
+	}
 	_ = sess.Close()
+
+	c.sessionTrackMutex.Lock()
+	delete(c.sessionTrack.Sessions, sessionID)
+	c.sessionTrackMutex.Unlock()
 
 	c.Logger.DebugWith("Session Stats (↓)",
 		slog.F("global", session.GetTotalCount()),
 		slog.F("active", session.GetActiveCount()),
 		slog.F("session_id", sessionID),
-		slog.F("remote_addr", sess.GetWebSocketConn().RemoteAddr().String()))
-
-	delete(c.sessionTrack.Sessions, sessionID)
+		slog.F("remote_addr", remoteAddr))
 }
 
 func (c *client) enableKeyAuth(key string) error {
@@ -210,6 +201,7 @@ func (c *client) loadFingerPrint(fp string) error {
 	if fErr != nil {
 		return fmt.Errorf("failed to read fingerprint file: %v", fErr)
 	}
+	defer func() { _ = file.Close() }()
 	scan := bufio.NewScanner(file)
 	for scan.Scan() {
 		if f := scan.Text(); f != "" {

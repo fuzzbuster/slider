@@ -60,12 +60,12 @@
           "chapter_number": "9"
         },
         ".trae/deepwiki/服务端实现与 Web 控制台.md": {
-          "content_hash": "bce064c34757991706e0d3453e0322a56758d1c31a743f62e2f1d24965652066",
+          "content_hash": "256d3f511d773137df824398e4656497f1b5e5b65183f6149a81e61809617349",
           "file_path": ".trae/deepwiki/服务端实现与 Web 控制台.md",
           "chapter_number": "5"
         },
         ".trae/deepwiki/服务端实现与 Web 控制台/认证与权限控制.md": {
-          "content_hash": "79d0e63ebb96f24030f3d65e212618b2b1b2209bc0775e6167354738aa71ff28",
+          "content_hash": "153d943452ae0e743192957533700a52a7bf49af073dc9bbdddaa127d04990d8",
           "file_path": ".trae/deepwiki/服务端实现与 Web 控制台/认证与权限控制.md",
           "chapter_number": "5.4"
         },
@@ -80,7 +80,7 @@
           "chapter_number": "5.3"
         },
         ".trae/deepwiki/核心模式与连接机制/扩展拓扑：Gateway 与 Beacon 模式.md": {
-          "content_hash": "d66f0b7832e94af17bb3ec29f1ffa4935b7ac3631a22e530b11a886ce776e08b",
+          "content_hash": "9edad660cd3761462c132f62e33729ea82a33123c27ff45780cace37b4e8ac14",
           "file_path": ".trae/deepwiki/核心模式与连接机制/扩展拓扑：Gateway 与 Beacon 模式.md",
           "chapter_number": "3.4"
         },
@@ -184,12 +184,12 @@
       "chapter_number": "9"
     },
     ".trae/deepwiki/服务端实现与 Web 控制台.md": {
-      "content_hash": "bce064c34757991706e0d3453e0322a56758d1c31a743f62e2f1d24965652066",
+      "content_hash": "256d3f511d773137df824398e4656497f1b5e5b65183f6149a81e61809617349",
       "file_path": ".trae/deepwiki/服务端实现与 Web 控制台.md",
       "chapter_number": "5"
     },
     ".trae/deepwiki/服务端实现与 Web 控制台/认证与权限控制.md": {
-      "content_hash": "79d0e63ebb96f24030f3d65e212618b2b1b2209bc0775e6167354738aa71ff28",
+      "content_hash": "153d943452ae0e743192957533700a52a7bf49af073dc9bbdddaa127d04990d8",
       "file_path": ".trae/deepwiki/服务端实现与 Web 控制台/认证与权限控制.md",
       "chapter_number": "5.4"
     },
@@ -204,7 +204,7 @@
       "chapter_number": "5.3"
     },
     ".trae/deepwiki/核心模式与连接机制/扩展拓扑：Gateway 与 Beacon 模式.md": {
-      "content_hash": "d66f0b7832e94af17bb3ec29f1ffa4935b7ac3631a22e530b11a886ce776e08b",
+      "content_hash": "9edad660cd3761462c132f62e33729ea82a33123c27ff45780cace37b4e8ac14",
       "file_path": ".trae/deepwiki/核心模式与连接机制/扩展拓扑：Gateway 与 Beacon 模式.md",
       "chapter_number": "3.4"
     },

@@ -27,7 +27,7 @@ const (
 )
 
 // SessionsCommand implements the 'sessions' command
-type SessionsCommand struct{}
+type SessionsCommand struct{ BaseCommand }
 
 // UnifiedSession represents a normalized session (local or remote)
 type UnifiedSession struct {
@@ -238,10 +238,9 @@ func (s *server) resolveRemoteOwner(entry remoteSessionEntry, lookup map[pathKey
 	return entry.gatewayUnified
 }
 
-func (c *SessionsCommand) Name() string             { return sessionsCmd }
-func (c *SessionsCommand) Description() string      { return sessionsDesc }
-func (c *SessionsCommand) Usage() string            { return sessionsUsage }
-func (c *SessionsCommand) IsRemoteCompletion() bool { return false }
+func (c *SessionsCommand) Name() string        { return sessionsCmd }
+func (c *SessionsCommand) Description() string { return sessionsDesc }
+func (c *SessionsCommand) Usage() string       { return sessionsUsage }
 func (c *SessionsCommand) Run(ctx *ExecutionContext, args []string) error {
 	svr := ctx.getServer()
 	ui := ctx.UI()
@@ -329,7 +328,7 @@ func (c *SessionsCommand) Run(ctx *ExecutionContext, args []string) error {
 
 				// If Local (GatewayID == 0), fetch detailed info from actual session
 				if uSess.GatewayID == 0 {
-					if sess, ok := svr.sessionTrack.Sessions[uSess.ActualID]; ok {
+					if sess, err := svr.GetSession(int(uSess.ActualID)); err == nil {
 						if sess.GetSSHInstance().IsEnabled() {
 							if port, pErr := sess.GetSSHInstance().GetEndpointPort(); pErr == nil {
 								sshPort = fmt.Sprintf("%d", port)
@@ -432,7 +431,7 @@ func (c *SessionsCommand) Run(ctx *ExecutionContext, args []string) error {
 			_, _ = fmt.Fprintln(tw)
 			_ = tw.Flush()
 		}
-		ui.PrintInfo("Active sessions: %d\n", svr.sessionTrack.SessionActive)
+		ui.PrintInfo("Active sessions: %d\n", svr.activeSessionCount())
 		return nil
 	}
 
@@ -441,7 +440,7 @@ func (c *SessionsCommand) Run(ctx *ExecutionContext, args []string) error {
 		if sessErr != nil {
 			return fmt.Errorf("unknown session ID %d", *sDisconnect)
 		}
-		if cErr := sess.GetWebSocketConn().Close(); cErr != nil {
+		if cErr := sess.Close(); cErr != nil {
 			return fmt.Errorf("failed to close connection to session ID %d: %w", sess.GetID(), cErr)
 		}
 		ui.PrintSuccess("Closed connection to Session ID %d", sess.GetID())

@@ -15,7 +15,7 @@ import (
 // the connection to the Server as a transparent proxy
 func (c *client) handleBeaconConnection(w http.ResponseWriter, r *http.Request) {
 	// Upgrade to WebSocket
-	upgrader := listener.DefaultWebSocketUpgrader
+	upgrader := listener.NewWebSocketUpgrader()
 	wsConn, err := upgrader.Upgrade(w, r, c.httpHeaders)
 	if err != nil {
 		c.Logger.ErrorWith("Failed to upgrade Beacon client",

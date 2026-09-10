@@ -8,11 +8,12 @@ import (
 )
 
 const (
-	AuthPath       = "/auth"
-	AuthLoginPath  = AuthPath + "/token"
-	AuthLogoutPath = AuthPath + "/logout"
-	ConsolePath    = "/console"
-	ConsoleWsPath  = ConsolePath + "/ws"
+	AuthPath          = "/auth"
+	AuthChallengePath = AuthPath + "/challenge"
+	AuthLoginPath     = AuthPath + "/token"
+	AuthLogoutPath    = AuthPath + "/logout"
+	ConsolePath       = "/console"
+	ConsoleWsPath     = ConsolePath + "/ws"
 )
 
 // RouterConfig holds options for enabling/disabling endpoints

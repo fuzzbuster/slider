@@ -45,7 +45,6 @@ func NewClientToServerSession(
 		serverAddr:       serverAddr,
 
 		KeepAliveChan: make(chan bool, 1),
-		Disconnect:    make(chan bool, 1),
 		active:        true,
 		// Initialize with default terminal size for potential incoming shell/exec requests
 		initTermSize: types.TermDimensions{
@@ -96,7 +95,6 @@ func NewServerFromClientSession(
 		hostIP:           hostIP,
 
 		KeepAliveChan: make(chan bool, 1),
-		Disconnect:    make(chan bool, 1),
 		active:        true,
 	}
 
@@ -169,7 +167,6 @@ func NewServerToServerSession(
 		hostIP:           hostIP,
 
 		KeepAliveChan: make(chan bool, 1),
-		Disconnect:    make(chan bool, 1),
 		active:        true,
 	}
 
@@ -242,7 +239,6 @@ func NewServerToListenerSession(
 		hostIP:           hostIP,
 
 		KeepAliveChan: make(chan bool, 1),
-		Disconnect:    make(chan bool, 1),
 		active:        true,
 	}
 
@@ -290,36 +286,34 @@ func NewServerToListenerSession(
 // Close terminates the session and cleans up all resources
 func (s *BidirectionalSession) Close() error {
 	s.sessionMutex.Lock()
-	defer s.sessionMutex.Unlock()
-
 	if !s.active {
-		return nil // Already closed
+		s.sessionMutex.Unlock()
+		return nil
 	}
+	s.active = false
+	keepAliveOn := s.keepAliveOn
+	s.keepAliveOn = false
+	s.sessionMutex.Unlock()
 
 	s.logger.InfoWith("Closing session",
 		slog.F("session_id", s.sessionID),
 		slog.F("role", s.role.String()))
-	s.active = false
 
-	// Stop keep-alive
-	if s.keepAliveOn {
+	if keepAliveOn {
 		select {
 		case s.KeepAliveChan <- true:
-			// Successfully sent stop signal
 		default:
-			// Channel might be full or already closed
 		}
-		s.keepAliveOn = false
 	}
 
-	// Close channels
 	s.channelsMutex.Lock()
-	for _, ch := range s.channels {
+	channels := s.channels
+	s.channels = nil
+	s.channelsMutex.Unlock()
+	for _, ch := range channels {
 		_ = ch.Close()
 	}
-	s.channelsMutex.Unlock()
 
-	// Close SSH connections
 	if s.sshClient != nil {
 		_ = s.sshClient.Close()
 	}
@@ -331,8 +325,10 @@ func (s *BidirectionalSession) Close() error {
 	if s.wsConn != nil {
 		_ = s.wsConn.Close()
 	}
+	if s.rawConn != nil {
+		_ = s.rawConn.Close()
+	}
 
-	// Stop endpoint instances (if server/gateway/listener)
 	if s.role.IsOperator() || s.role.IsGateway() || s.role.IsAgent() {
 		if s.socksInstance != nil && s.socksInstance.IsEnabled() {
 			_ = s.socksInstance.Stop()
@@ -345,12 +341,14 @@ func (s *BidirectionalSession) Close() error {
 		}
 	}
 
-	// Cancel port forwards (AgentRole)
-	if s.role.IsAgent() {
+	if s.role.IsAgent() || s.role.IsGateway() {
 		s.fwdMutex.Lock()
 		for _, pfc := range s.revPortFwdMap {
 			if pfc.StopChan != nil {
-				close(pfc.StopChan)
+				select {
+				case pfc.StopChan <- true:
+				default:
+				}
 			}
 		}
 		s.fwdMutex.Unlock()

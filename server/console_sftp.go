@@ -351,7 +351,7 @@ func (c *Console) setSftpConsoleAutoComplete(registry *CommandRegistry, sftpCtx 
 			system = sftpCtx.getContextSystem(true)
 			homeDir = sftpCtx.getContextHomeDir(true)
 
-			completer := completion.NewRemotePathCompleter(sftpClient)
+			var completer completion.PathCompleter = completion.NewRemotePathCompleter(sftpClient)
 			matches, commonPrefix, err = completer.Complete(currentArg, remoteCwd, system, homeDir)
 		} else {
 			// Local path completion
@@ -359,7 +359,7 @@ func (c *Console) setSftpConsoleAutoComplete(registry *CommandRegistry, sftpCtx 
 			system = sftpCtx.getContextSystem(false)
 			homeDir = sftpCtx.getContextHomeDir(false)
 
-			completer := completion.NewLocalPathCompleter()
+			var completer completion.PathCompleter = completion.NewLocalPathCompleter()
 			matches, commonPrefix, err = completer.Complete(currentArg, localCwd, system, homeDir)
 		}
 

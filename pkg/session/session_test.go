@@ -4,8 +4,11 @@ import (
 	"errors"
 	"testing"
 
+	"slider/pkg/conf"
 	"slider/pkg/interpreter"
 	"slider/pkg/slog"
+
+	"golang.org/x/crypto/ssh"
 )
 
 // Mock ApplicationServer for Testing
@@ -392,5 +395,55 @@ func TestRemoteSessionBuilding(t *testing.T) {
 	}
 	if rs.System != "linux" {
 		t.Errorf("Expected system 'linux', got '%s'", rs.System)
+	}
+}
+
+type routeTestChannel struct {
+	rejected bool
+}
+
+func (*routeTestChannel) Accept() (ssh.Channel, <-chan *ssh.Request, error) {
+	return nil, nil, nil
+}
+func (c *routeTestChannel) Reject(ssh.RejectionReason, string) error {
+	c.rejected = true
+	return nil
+}
+func (*routeTestChannel) ChannelType() string { return conf.SSHChannelSliderConnect }
+func (*routeTestChannel) ExtraData() []byte   { return nil }
+
+type routeTestRouter struct {
+	calls int
+}
+
+func (r *routeTestRouter) Route(ssh.NewChannel, Session, ApplicationServer) error {
+	r.calls++
+	return nil
+}
+
+func TestSliderConnectRequiresOperatorPeer(t *testing.T) {
+	router := &routeTestRouter{}
+	srv := NewMockApplicationServer()
+	sess := NewTestSession(1).
+		WithPeerRole(AgentConnector).
+		WithApplicationServer(srv).
+		Build()
+	sess.SetRouter(router)
+
+	rejected := &routeTestChannel{}
+	if err := sess.RouteChannel(rejected, conf.SSHChannelSliderConnect); err != nil {
+		t.Fatal(err)
+	}
+	if !rejected.rejected || router.calls != 0 {
+		t.Fatal("agent peer was allowed to route slider-connect")
+	}
+
+	sess.SetPeerRole(OperatorConnector)
+	allowed := &routeTestChannel{}
+	if err := sess.RouteChannel(allowed, conf.SSHChannelSliderConnect); err != nil {
+		t.Fatal(err)
+	}
+	if allowed.rejected || router.calls != 1 {
+		t.Fatal("operator peer was not routed")
 	}
 }

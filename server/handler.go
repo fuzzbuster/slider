@@ -3,6 +3,7 @@ package server
 import (
 	"context"
 	"crypto/tls"
+	"crypto/x509"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -20,8 +21,17 @@ import (
 
 	"github.com/creack/pty"
 	"github.com/gorilla/websocket"
+	"golang.org/x/crypto/ssh"
 	"golang.org/x/term"
 )
+
+type connectorSecurity struct {
+	fingerprint string
+	caPath      string
+	serverName  string
+	tlsCertPath string
+	tlsKeyPath  string
+}
 
 // buildRouter creates the HTTP router with all configured endpoints
 func (s *server) buildRouter() http.Handler {
@@ -42,9 +52,10 @@ func (s *server) buildRouter() http.Handler {
 	if s.httpConsoleOn {
 		// Authentication endpoints & Console page
 		if s.authOn {
-			mux.HandleFunc(listener.AuthPath, s.handleAuthPage)       // GET: Login page
-			mux.HandleFunc(listener.AuthLoginPath, s.handleAuthToken) // POST: JWT from fingerprint
-			mux.HandleFunc(listener.AuthLogoutPath, s.handleLogout)   // POST: Logout
+			mux.HandleFunc(listener.AuthPath, s.handleAuthPage)
+			mux.HandleFunc(listener.AuthChallengePath, s.handleAuthChallenge)
+			mux.HandleFunc(listener.AuthLoginPath, s.handleAuthToken)
+			mux.HandleFunc(listener.AuthLogoutPath, s.handleLogout)
 			// Console page endpoint protected by auth middleware
 			mux.Handle(listener.ConsolePath, s.authMiddleware(http.HandlerFunc(s.handleConsolePage)))
 		} else {
@@ -68,8 +79,11 @@ func (s *server) buildRouter() http.Handler {
 	}
 
 	// Set accepted operations
-	acceptedOps := []string{conf.OperationAgent, conf.OperationCallback}
-	if s.gateway {
+	acceptedOps := []string{conf.OperationAgent}
+	if s.authOn {
+		acceptedOps = append(acceptedOps, conf.OperationCallback)
+	}
+	if s.gateway && s.authOn {
 		// Gateway servers can be controlled via OperationOperator
 		acceptedOps = append(acceptedOps, conf.OperationOperator)
 	}
@@ -85,7 +99,7 @@ func (s *server) buildRouter() http.Handler {
 }
 
 func (s *server) handleWebSocket(w http.ResponseWriter, r *http.Request) {
-	upgrader := listener.DefaultWebSocketUpgrader
+	upgrader := listener.NewWebSocketUpgrader()
 
 	wsConn, err := upgrader.Upgrade(w, r, nil)
 	if err != nil {
@@ -151,12 +165,7 @@ func (s *server) handleWebSocket(w http.ResponseWriter, r *http.Request) {
 		biSession.SetIsGateway(false)
 	}
 
-	// Add to server's session track
-	s.sessionTrackMutex.Lock()
-	s.sessionTrack.Sessions[biSession.GetID()] = biSession
-	s.sessionTrack.SessionCount = biSession.GetID()
-	s.sessionTrack.SessionActive++
-	s.sessionTrackMutex.Unlock()
+	s.addSession(biSession)
 
 	defer func() {
 		s.dropWebSocketSession(biSession)
@@ -166,14 +175,22 @@ func (s *server) handleWebSocket(w http.ResponseWriter, r *http.Request) {
 	if r.Header.Get("Sec-WebSocket-Operation") == conf.OperationCallback {
 		// For callback connections, we (the receiver) act as the SSH Client (Controller)
 		// while the gateway (initiator) acts as the SSH Server (Controlled)
-		s.NewSSHClient(biSession)
+		s.NewSSHClient(biSession, s.authorizedHostKey, nil)
 	} else {
 		// Standard behavior: we act as the SSH Server for agents/clients
 		s.NewSSHServer(biSession)
 	}
 }
 
-func (s *server) newConnector(targetUrl *url.URL, notifier chan error, certID int64, customDNS string, customProto string, tlsCertPath string, tlsKeyPath string, operation string) {
+func (s *server) newConnector(
+	targetUrl *url.URL,
+	notifier chan error,
+	certID int64,
+	customDNS string,
+	customProto string,
+	security connectorSecurity,
+	operation string,
+) {
 	// Check for self-connection attempts (any server type)
 	// This applies to any connection mode, but particularly important for gateway connections
 	targetHost := targetUrl.Hostname()
@@ -208,6 +225,22 @@ func (s *server) newConnector(targetUrl *url.URL, notifier chan error, certID in
 		notifier <- wErr
 		return
 	}
+	if operation == conf.OperationOperator && security.fingerprint == "" {
+		err := fmt.Errorf("gateway connection requires an SSH fingerprint")
+		notifier <- err
+		return
+	}
+	if (operation == conf.OperationOperator || operation == conf.OperationCallback) &&
+		(!s.authOn || certID == 0) {
+		err := fmt.Errorf("gateway and callback connections require authentication and a certificate ID")
+		notifier <- err
+		return
+	}
+	if operation != conf.OperationOperator && wsURL.Scheme != "wss" {
+		err := fmt.Errorf("listener and callback connections require HTTPS")
+		notifier <- err
+		return
+	}
 
 	wsURLStr := wsURL.String()
 	if customDNS != "" {
@@ -221,19 +254,38 @@ func (s *server) newConnector(targetUrl *url.URL, notifier chan error, certID in
 		s.DebugWith("Connecting to client", slog.F("url", wsURL), slog.F("resolved_ip", ip))
 	}
 
-	wsConfig := listener.DefaultWebSocketDialer
+	wsConfig := listener.NewWebSocketDialer()
 	if wsURL.Scheme == "wss" {
-		wsConfig.TLSClientConfig.InsecureSkipVerify = true
-		if tlsCertPath != "" && tlsKeyPath != "" {
-			cert, lErr := tls.LoadX509KeyPair(tlsCertPath, tlsKeyPath)
+		wsConfig.TLSClientConfig.ServerName = security.serverName
+		if wsConfig.TLSClientConfig.ServerName == "" {
+			wsConfig.TLSClientConfig.ServerName = targetUrl.Hostname()
+		}
+		if security.caPath != "" {
+			caPEM, rErr := os.ReadFile(security.caPath)
+			if rErr != nil {
+				notifier <- fmt.Errorf("failed to read server CA: %w", rErr)
+				return
+			}
+			rootCAs := x509.NewCertPool()
+			if !rootCAs.AppendCertsFromPEM(caPEM) {
+				notifier <- fmt.Errorf("failed to parse server CA")
+				return
+			}
+			wsConfig.TLSClientConfig.RootCAs = rootCAs
+		}
+		if security.tlsCertPath != "" && security.tlsKeyPath != "" {
+			cert, lErr := tls.LoadX509KeyPair(security.tlsCertPath, security.tlsKeyPath)
 			if lErr != nil {
 				s.ErrorWith("Failed to load TLS certificate", slog.F("err", lErr))
 				notifier <- lErr
 				return
 			}
 			wsConfig.TLSClientConfig.Certificates = []tls.Certificate{cert}
+		} else if security.tlsCertPath != "" || security.tlsKeyPath != "" {
+			err := fmt.Errorf("TLS client certificate and key must be provided together")
+			notifier <- err
+			return
 		}
-
 	}
 
 	wsConn, _, err := wsConfig.DialContext(context.Background(), wsURLStr, http.Header{
@@ -249,6 +301,7 @@ func (s *server) newConnector(targetUrl *url.URL, notifier chan error, certID in
 
 	// Create a new ssh configuration for this connection
 	sshConf := *s.sshConf
+	var connectorSigner ssh.Signer
 	if certID != 0 {
 		keyPair, kErr := s.getCert(certID)
 		if kErr != nil {
@@ -263,6 +316,7 @@ func (s *server) newConnector(targetUrl *url.URL, notifier chan error, certID in
 			notifier <- sErr
 			return
 		}
+		connectorSigner = signerKey
 		sshConf.AddHostKey(signerKey)
 	}
 
@@ -328,12 +382,7 @@ func (s *server) newConnector(targetUrl *url.URL, notifier chan error, certID in
 		biSession.SetCertInfo(certID, keyPair.FingerPrint)
 	}
 
-	// Add to server's session track
-	s.sessionTrackMutex.Lock()
-	s.sessionTrack.Sessions[biSession.GetID()] = biSession
-	s.sessionTrack.SessionCount = biSession.GetID()
-	s.sessionTrack.SessionActive++
-	s.sessionTrackMutex.Unlock()
+	s.addSession(biSession)
 
 	defer s.dropWebSocketSession(biSession)
 
@@ -343,7 +392,11 @@ func (s *server) newConnector(targetUrl *url.URL, notifier chan error, certID in
 	switch operation {
 	case conf.OperationOperator:
 		// Gateway mode: we act as SSH client (control the remote server)
-		s.NewSSHClient(biSession)
+		s.NewSSHClient(
+			biSession,
+			hostKeyCallbackForFingerprint(security.fingerprint),
+			connectorSigner,
+		)
 	case conf.OperationCallback:
 		// Callback mode: we act as SSH server (expose our shell to be controlled)
 		s.NewSSHServer(biSession)
@@ -357,12 +410,8 @@ func (s *server) newConnector(targetUrl *url.URL, notifier chan error, certID in
 // handleWebSocketConsole upgrades HTTP to WebSocket and bridges to a PTY console
 func (s *server) handleWebSocketConsole(w http.ResponseWriter, r *http.Request) error {
 	if s.authOn {
-		// Extract token from cookie or query parameter
+		// Browser clients authenticate with the cookie; CLI clients use Authorization.
 		token := extractTokenFromRequest(r)
-		if token == "" {
-			token = r.URL.Query().Get("token")
-		}
-
 		if token == "" {
 			s.DebugWith("WebSocket connection rejected: missing token",
 				slog.F("remote_addr", r.RemoteAddr))
@@ -371,7 +420,6 @@ func (s *server) handleWebSocketConsole(w http.ResponseWriter, r *http.Request) 
 			return fmt.Errorf("missing token")
 		}
 
-		// Try to validate as JWT first, fall back to fingerprint for backward compatibility
 		fingerprint, certID, err := s.validateToken(token)
 		if err != nil {
 			s.DebugWith("WebSocket connection rejected: invalid token",
@@ -388,10 +436,7 @@ func (s *server) handleWebSocketConsole(w http.ResponseWriter, r *http.Request) 
 			slog.F("cert_id", certID))
 	}
 
-	upgrader := listener.DefaultWebSocketUpgrader
-	upgrader.CheckOrigin = func(r *http.Request) bool {
-		return true // Allow all origins
-	}
+	upgrader := listener.NewWebSocketUpgrader()
 
 	wsConn, err := upgrader.Upgrade(w, r, nil)
 	if err != nil {

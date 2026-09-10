@@ -23,32 +23,37 @@ import (
 
 // Config holds all configuration for a server instance
 type Config struct {
-	Verbose       string
-	Address       string
-	Port          int
-	Keepalive     time.Duration
-	Colorless     bool
-	Auth          bool
-	CertJarFile   string
-	CaStore       bool
-	CaStorePath   string
-	TemplatePath  string
-	ServerHeader  string
-	HttpRedirect  string
-	StatusCode    int
-	HttpVersion   bool
-	HttpHealth    bool
-	CustomProto   string
-	ListenerCert  string
-	ListenerKey   string
-	ListenerCA    string
-	JsonLog       bool
-	CallerLog     bool
-	Headless      bool
-	HttpConsole   bool
-	Gateway       bool
-	CallbackURL   string
-	CallbackRetry bool
+	Verbose            string
+	Address            string
+	Port               int
+	Keepalive          time.Duration
+	Colorless          bool
+	Auth               bool
+	CertJarFile        string
+	CaStore            bool
+	CaStorePath        string
+	TemplatePath       string
+	ServerHeader       string
+	HttpRedirect       string
+	StatusCode         int
+	HttpVersion        bool
+	HttpHealth         bool
+	CustomProto        string
+	ListenerCert       string
+	ListenerKey        string
+	ListenerCA         string
+	JsonLog            bool
+	CallerLog          bool
+	Headless           bool
+	HttpConsole        bool
+	Gateway            bool
+	CallbackURL        string
+	CallbackRetry      bool
+	CallbackCertID     int64
+	CallbackCA         string
+	CallbackServerName string
+	CallbackTLSCert    string
+	CallbackTLSKey     string
 }
 
 // RunServer starts a server with the given configuration
@@ -97,6 +102,7 @@ func RunServer(cfg *Config) {
 		certTrack: &scrypt.CertTrack{
 			Certs: make(map[int64]*scrypt.KeyPair),
 		},
+		authChallenges:    make(map[string]authChallenge),
 		certJarFile:       cfg.CertJarFile,
 		authOn:            cfg.Auth,
 		host:              cfg.Address,
@@ -276,6 +282,9 @@ func RunServer(cfg *Config) {
 		if !cfg.Gateway {
 			s.Fatalf("--callback requires --gateway mode")
 		}
+		if !cfg.Auth || cfg.CallbackCertID == 0 {
+			s.Fatalf("--callback requires --auth and --callback-cert-id")
+		}
 		go func() {
 			// Small delay to ensure server is ready
 			time.Sleep(100 * time.Millisecond)
@@ -294,7 +303,20 @@ func RunServer(cfg *Config) {
 				notifier := make(chan error, 1)
 
 				// Start connection (blocks until disconnection or failure)
-				s.newConnector(cu, notifier, 0, "", s.customProto, "", "", conf.OperationCallback)
+				s.newConnector(
+					cu,
+					notifier,
+					cfg.CallbackCertID,
+					"",
+					s.customProto,
+					connectorSecurity{
+						caPath:      cfg.CallbackCA,
+						serverName:  cfg.CallbackServerName,
+						tlsCertPath: cfg.CallbackTLSCert,
+						tlsKeyPath:  cfg.CallbackTLSKey,
+					},
+					conf.OperationCallback,
+				)
 
 				// Connection attempt finished (either failed immediately or disconnected)
 				cErr := <-notifier

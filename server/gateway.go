@@ -2,19 +2,26 @@ package server
 
 import (
 	"encoding/json"
+	"fmt"
+	"net"
 	"time"
 
 	"slider/pkg/conf"
 	"slider/pkg/interpreter"
 	"slider/pkg/sconn"
+	"slider/pkg/scrypt"
 	"slider/pkg/session"
 	"slider/pkg/slog"
 
 	"golang.org/x/crypto/ssh"
 )
 
-// NewSSHClient establishes an SSH connection as a client (Gateway Mode)
-func (s *server) NewSSHClient(biSession *session.BidirectionalSession) {
+// NewSSHClient establishes an SSH connection as a client (Gateway Mode).
+func (s *server) NewSSHClient(
+	biSession *session.BidirectionalSession,
+	hostKeyCallback ssh.HostKeyCallback,
+	clientSigner ssh.Signer,
+) {
 	netConn := sconn.WsConnToNetConn(biSession.GetWebSocketConn())
 
 	s.DebugWith(
@@ -25,8 +32,9 @@ func (s *server) NewSSHClient(biSession *session.BidirectionalSession) {
 
 	// Determine auth method for outgoing connection
 	var authMethods []ssh.AuthMethod
-	if s.authOn {
-		// When --auth is enabled, authenticate using server's public key
+	if clientSigner != nil {
+		authMethods = append(authMethods, ssh.PublicKeys(clientSigner))
+	} else if s.authOn {
 		authMethods = append(authMethods, ssh.PublicKeys(s.serverKey))
 	} else {
 		// No authentication required; use keyboard-interactive fallback for compatibility
@@ -38,7 +46,7 @@ func (s *server) NewSSHClient(biSession *session.BidirectionalSession) {
 	sshConfig := &ssh.ClientConfig{
 		User:            "slider-server", // Identify as a server
 		Auth:            authMethods,
-		HostKeyCallback: ssh.InsecureIgnoreHostKey(), // TODO: Verify host key if needed?
+		HostKeyCallback: hostKeyCallback,
 		ClientVersion:   "SSH-slider-server-client",
 	}
 
@@ -137,6 +145,30 @@ func (s *server) NewSSHClient(biSession *session.BidirectionalSession) {
 
 	// Block until connection closes
 	_ = client.Wait()
+}
+
+func hostKeyCallbackForFingerprint(expected string) ssh.HostKeyCallback {
+	return func(_ string, _ net.Addr, key ssh.PublicKey) error {
+		fingerprint, err := scrypt.GenerateFingerprint(key)
+		if err != nil {
+			return err
+		}
+		if fingerprint != expected {
+			return fmt.Errorf("SSH host fingerprint mismatch")
+		}
+		return nil
+	}
+}
+
+func (s *server) authorizedHostKey(_ string, _ net.Addr, key ssh.PublicKey) error {
+	fingerprint, err := scrypt.GenerateFingerprint(key)
+	if err != nil {
+		return err
+	}
+	if _, _, ok := s.getCertByFingerprint(fingerprint); !ok {
+		return fmt.Errorf("SSH host key is not authorized")
+	}
+	return nil
 }
 
 // EventRequest defines the payload for slider-event request

@@ -226,7 +226,7 @@ func (c *Console) setConsoleAutoComplete(registry *CommandRegistry, serverInterp
 			cwd = "."
 		}
 
-		completer := completion.NewLocalPathCompleter()
+		var completer completion.PathCompleter = completion.NewLocalPathCompleter()
 		matches, commonPrefix, err := completer.Complete(currentArg, cwd, serverInterpreter.System, serverInterpreter.HomeDir)
 		if err != nil || len(matches) == 0 {
 			// No matches, return original line

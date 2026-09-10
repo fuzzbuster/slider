@@ -146,7 +146,13 @@ func (s *BidirectionalSession) executeShellWithPty(
 	// Handle window resize
 	go func() {
 		for sizeBytes := range winChange {
-			cols, rows := instance.ParseSizePayload(sizeBytes)
+			cols, rows, err := instance.ParseSizePayload(sizeBytes)
+			if err != nil {
+				s.logger.WarnWith("Rejected invalid window size",
+					slog.F("session_id", s.sessionID),
+					slog.F("err", err))
+				continue
+			}
 			if sErr := ptyF.Resize(cols, rows); sErr != nil {
 				s.logger.ErrorWith("Failed to set window size",
 					slog.F("session_id", s.sessionID),

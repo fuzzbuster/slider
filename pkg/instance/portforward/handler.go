@@ -108,32 +108,41 @@ func (m *Manager) HandleTCPIPForwardRequest(req *ssh.Request, sshServerConn SSHS
 
 	control, _ := m.GetRemoteMapping(conf.ForwardingProtocolTCP, srcReqPayload.BindPort)
 
-	// Handle incoming connections on the forwarded port
-	for channelMsg := range control.RcvChan {
-		channel, tcpIpFwdReq, oErr := sshServerConn.OpenChannel(conf.SSHChannelForwardedTCPIP, ssh.Marshal(channelMsg))
+	for {
+		var channelMsg *types.CustomTcpIpChannelMsg
+		select {
+		case <-control.CancelChan:
+			return
+		case channelMsg = <-control.RcvChan:
+		}
+
+		channel, tcpIpFwdReq, oErr := sshServerConn.OpenChannel(
+			conf.SSHChannelForwardedTCPIP,
+			ssh.Marshal(channelMsg.TcpIpChannelMsg),
+		)
 		if oErr != nil {
 			m.logger.ErrorWith("Failed to open channel to client",
 				slog.F("session_id", m.sessionID),
 				slog.F("request_channel", conf.SSHChannelForwardedTCPIP),
 				slog.F("err", oErr))
-			control.DoneChan <- true
+			close(channelMsg.Done)
 			continue
 		}
 		go ssh.DiscardRequests(tcpIpFwdReq)
 
 		// Pipe the channels together
-		go func() {
+		go func(channel ssh.Channel, forwarded *types.CustomTcpIpChannelMsg) {
 			defer func() {
 				_ = channel.Close()
+				close(forwarded.Done)
 			}()
-			_, _ = sio.PipeWithCancel(channel, m.forwardedTx.ForwardedSshChannel)
-			control.DoneChan <- true
+			_, _ = sio.PipeWithCancel(channel, forwarded.Channel)
 			m.logger.DebugWith("Completed SSH Port Forward channel from remote",
 				slog.F("session_id", m.sessionID),
 				slog.F("request_channel", conf.SSHChannelForwardedTCPIP),
 				slog.F("src_host", srcReqPayload.BindAddress),
 				slog.F("src_port", srcReqPayload.BindPort))
-		}()
+		}(channel, channelMsg)
 	}
 }
 
@@ -160,11 +169,6 @@ func (m *Manager) HandleDirectTCPIPChannel(nc ssh.NewChannel) error {
 		slog.F("src_host", dti.SrcHost),
 		slog.F("src_port", dti.SrcPort))
 
-	// Store the channel for forwarding
-	m.forwardedTx.ForwardingMutex.Lock()
-	m.forwardedTx.ForwardedSshChannel = sessionClientChannel
-	m.forwardedTx.ForwardingMutex.Unlock()
-
 	// Get the control channel for this mapping
 	control, cErr := m.GetRemoteMapping(conf.ForwardingProtocolTCP, dti.DstPort)
 	if cErr != nil {
@@ -172,10 +176,22 @@ func (m *Manager) HandleDirectTCPIPChannel(nc ssh.NewChannel) error {
 	}
 
 	// Send the connection info to the forwarding goroutine
-	control.RcvChan <- &dti
+	forwarded := &types.CustomTcpIpChannelMsg{
+		Protocol:        conf.ForwardingProtocolTCP,
+		TcpIpChannelMsg: &dti,
+		Channel:         sessionClientChannel,
+		Done:            make(chan struct{}),
+	}
+	select {
+	case control.RcvChan <- forwarded:
+	case <-control.CancelChan:
+		return nil
+	}
 
-	// Wait for completion
-	<-control.DoneChan
+	select {
+	case <-forwarded.Done:
+	case <-control.CancelChan:
+	}
 
 	return nil
 }
@@ -207,11 +223,6 @@ func (m *Manager) HandleDirectUDPChannel(nc ssh.NewChannel) error {
 		slog.F("src_host", dti.SrcHost),
 		slog.F("src_port", dti.SrcPort))
 
-	// Store the channel for forwarding
-	m.forwardedTx.ForwardingMutex.Lock()
-	m.forwardedTx.ForwardedSshChannel = sessionClientChannel
-	m.forwardedTx.ForwardingMutex.Unlock()
-
 	// Get the control channel for this mapping
 	control, cErr := m.GetRemoteMapping(conf.ForwardingProtocolUDP, dti.DstPort)
 	if cErr != nil {
@@ -219,10 +230,18 @@ func (m *Manager) HandleDirectUDPChannel(nc ssh.NewChannel) error {
 	}
 
 	// Send the connection info to the forwarding goroutine
-	control.RcvChan <- &dti
+	customMsg.Channel = sessionClientChannel
+	customMsg.Done = make(chan struct{})
+	select {
+	case control.RcvChan <- customMsg:
+	case <-control.CancelChan:
+		return nil
+	}
 
-	// Wait for completion
-	<-control.DoneChan
+	select {
+	case <-customMsg.Done:
+	case <-control.CancelChan:
+	}
 
 	return nil
 }
@@ -319,31 +338,40 @@ func (m *Manager) HandleUDPForwardRequest(req *ssh.Request, sshServerConn SSHSer
 
 	control, _ := m.GetRemoteMapping(conf.ForwardingProtocolUDP, srcReqPayload.BindPort)
 
-	// Handle incoming connections on the forwarded port
-	for channelMsg := range control.RcvChan {
-		channel, tcpIpFwdReq, oErr := sshServerConn.OpenChannel(conf.SSHChannelDirectUDP, ssh.Marshal(channelMsg))
+	for {
+		var channelMsg *types.CustomTcpIpChannelMsg
+		select {
+		case <-control.CancelChan:
+			return
+		case channelMsg = <-control.RcvChan:
+		}
+
+		channel, tcpIpFwdReq, oErr := sshServerConn.OpenChannel(
+			conf.SSHChannelDirectUDP,
+			ssh.Marshal(channelMsg.TcpIpChannelMsg),
+		)
 		if oErr != nil {
 			m.logger.ErrorWith("Failed to open channel to client",
 				slog.F("session_id", m.sessionID),
 				slog.F("request_channel", conf.SSHChannelDirectUDP),
 				slog.F("err", oErr))
-			control.DoneChan <- true
+			close(channelMsg.Done)
 			continue
 		}
 		go ssh.DiscardRequests(tcpIpFwdReq)
 
 		// Pipe the channels together
-		go func() {
+		go func(channel ssh.Channel, forwarded *types.CustomTcpIpChannelMsg) {
 			defer func() {
 				_ = channel.Close()
+				close(forwarded.Done)
 			}()
-			_, _ = sio.PipeWithCancel(channel, m.forwardedTx.ForwardedSshChannel)
-			control.DoneChan <- true
+			_, _ = sio.PipeWithCancel(channel, forwarded.Channel)
 			m.logger.DebugWith("Completed SSH Port Forward channel from remote",
 				slog.F("session_id", m.sessionID),
 				slog.F("request_channel", conf.SSHChannelDirectUDP),
 				slog.F("src_host", srcReqPayload.BindAddress),
 				slog.F("src_port", srcReqPayload.BindPort))
-		}()
+		}(channel, channelMsg)
 	}
 }

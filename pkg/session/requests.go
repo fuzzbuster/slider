@@ -359,7 +359,10 @@ func (s *BidirectionalSession) handleCancelTcpIpForward(req *ssh.Request) {
 		revPortFwds := s.GetReversePortForwards()
 		if pfc, found := revPortFwds[tcpIpForward.BindPort]; found {
 			if pfc.BindAddress == tcpIpForward.BindAddress {
-				pfc.StopChan <- true
+				select {
+				case pfc.StopChan <- true:
+				default:
+				}
 				ok = true
 				s.logger.DebugWith("Cancelled reverse port forward",
 					slog.F("session_id", s.sessionID),

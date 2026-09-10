@@ -2,7 +2,6 @@ package server
 
 import (
 	"net/http"
-	"slider/pkg/auth"
 	"strings"
 )
 
@@ -27,7 +26,7 @@ func (s *server) authMiddleware(next http.Handler) http.Handler {
 		}
 
 		// Validate token
-		_, err := auth.Decode(token, s.getJWTSecret())
+		_, _, err := s.validateToken(token)
 		if err != nil {
 			s.handleUnauthorized(w, r, "Invalid or expired token")
 			return

@@ -11,19 +11,18 @@ import (
 	"github.com/gorilla/websocket"
 )
 
-var DefaultWebSocketDialer = &websocket.Dialer{
-	NetDial:          nil,
-	HandshakeTimeout: conf.Timeout,
-	Subprotocols:     nil,
-	// Use Default Buffer Size
-	ReadBufferSize:    0,
-	WriteBufferSize:   0,
-	EnableCompression: true,
-	TLSClientConfig:   &tls.Config{},
+func NewWebSocketDialer() *websocket.Dialer {
+	return &websocket.Dialer{
+		HandshakeTimeout:  conf.Timeout,
+		EnableCompression: true,
+		TLSClientConfig:   &tls.Config{},
+	}
 }
 
-var DefaultWebSocketUpgrader = &websocket.Upgrader{
-	HandshakeTimeout: conf.Timeout,
+func NewWebSocketUpgrader() *websocket.Upgrader {
+	return &websocket.Upgrader{
+		HandshakeTimeout: conf.Timeout,
+	}
 }
 
 func FormatToWS(u *url.URL) (*url.URL, error) {

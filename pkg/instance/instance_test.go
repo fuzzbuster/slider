@@ -1,6 +1,7 @@
 package instance
 
 import (
+	"encoding/binary"
 	"io"
 	"net"
 	"slider/pkg/slog"
@@ -9,6 +10,23 @@ import (
 
 	"golang.org/x/crypto/ssh"
 )
+
+func TestParseSizePayload(t *testing.T) {
+	if _, _, err := ParseSizePayload(make([]byte, 7)); err == nil {
+		t.Fatal("short window-change payload was accepted")
+	}
+
+	payload := make([]byte, 8)
+	binary.BigEndian.PutUint32(payload, 120)
+	binary.BigEndian.PutUint32(payload[4:], 40)
+	cols, rows, err := ParseSizePayload(payload)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if cols != 120 || rows != 40 {
+		t.Fatalf("dimensions = %dx%d, want 120x40", cols, rows)
+	}
+}
 
 func TestInstance(t *testing.T) {
 	logger := slog.NewLogger("TestSSocks")

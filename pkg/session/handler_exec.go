@@ -25,6 +25,12 @@ func (s *BidirectionalSession) HandleExec(nc ssh.NewChannel) error {
 		slog.F("session_id", s.sessionID),
 		slog.F("role", s.role.String()))
 
+	rcvCmd, err := types.ParseSSHString(nc.ExtraData())
+	if err != nil {
+		_ = nc.Reject(ssh.Prohibited, "invalid exec payload")
+		return err
+	}
+
 	// Accept channel
 	sshChan, requests, err := nc.Accept()
 	if err != nil {
@@ -73,17 +79,12 @@ func (s *BidirectionalSession) HandleExec(nc ssh.NewChannel) error {
 	}
 
 	var cCmd types.CustomCmd
-	var path, command, rcvCmd, cmdSeparator string
+	var path, command, cmdSeparator string
 	cmdSeparator = s.localInterpreter.ShellSeparator
 	if useAltShell {
 		cmdSeparator = s.localInterpreter.AltShellSeparator
 	}
-	// Extract command from ExtraData
-
-	// Extract as SSH wire format - command from external ssh connection
-	// First 4 elements are 3 null bytes plus the size of the payload
-	rcvCmdBytes := nc.ExtraData()[4:]
-	rcvCmd = string(rcvCmdBytes)
+	rcvCmdBytes := []byte(rcvCmd)
 	// Try CustomCmd format first internal command from Session
 	if jErr := json.Unmarshal(rcvCmdBytes, &cCmd); jErr == nil {
 		path = cCmd.Path
@@ -182,7 +183,13 @@ func (s *BidirectionalSession) executeCommandWithPty(
 	// Handle window-change events
 	go func() {
 		for sizeBytes := range winChange {
-			cols, rows := instance.ParseSizePayload(sizeBytes)
+			cols, rows, err := instance.ParseSizePayload(sizeBytes)
+			if err != nil {
+				s.logger.WarnWith("Rejected invalid window size",
+					slog.F("session_id", s.sessionID),
+					slog.F("err", err))
+				continue
+			}
 			if sErr := ptyF.Resize(cols, rows); sErr != nil {
 				s.logger.ErrorWith("Failed to update window size",
 					slog.F("session_id", s.sessionID),

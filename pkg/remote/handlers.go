@@ -31,7 +31,9 @@ func HandleSliderConnect(nc ssh.NewChannel, sess session.Session, srv session.Ap
 	}
 
 	if len(req.Target) == 0 {
-		return sess.RouteChannel(nc, req.ChannelType)
+		err := fmt.Errorf("target path is required")
+		_ = nc.Reject(ssh.ConnectionFailed, err.Error())
+		return err
 	}
 
 	return routeToNextHop(nc, sess, srv, &req)

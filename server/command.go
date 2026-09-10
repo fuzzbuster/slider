@@ -89,6 +89,7 @@ func (r *CommandRegistry) RegisterAlias(alias, commandName string) {
 func (s *server) initRegistry() {
 	s.commandRegistry = NewCommandRegistry()
 	s.commandRegistry.Register(&BgCommand{})
+	s.commandRegistry.Register(&ClearCommand{})
 	s.commandRegistry.Register(&ExitCommand{})
 	s.commandRegistry.Register(&HelpCommand{})
 	s.commandRegistry.Register(&SessionsCommand{})
@@ -160,9 +161,10 @@ func (r *CommandRegistry) Autocomplete(input string) (string, int) {
 	return substring, len(substring)
 }
 
-// BaseCommand is a helper struct to embed in commands to avoid implementing all methods if not needed
-// (Though currently all methods are needed, this is just a placeholder for future extensibility)
+// BaseCommand provides defaults shared by top-level console commands.
 type BaseCommand struct{}
+
+func (BaseCommand) IsRemoteCompletion() bool { return false }
 
 // Compile-time check to ensure Console implements UserInterface
 var _ UserInterface = (*Console)(nil)
