@@ -46,8 +46,7 @@ func ResolveURL(rawURL string) (*url.URL, error) {
 		return nil, fmt.Errorf("empty URL")
 	}
 	// url.Parse will return an error if there is no scheme, but we want to assume that's HTTP
-	miniParse := strings.Split(rawURL, "://")
-	if len(miniParse) == 1 {
+	if !strings.Contains(rawURL, "://") {
 		rawURL = fmt.Sprintf("http://%s", rawURL)
 	}
 	u, pErr := url.Parse(rawURL)
@@ -76,7 +75,7 @@ func IsSliderWebSocket(r *http.Request, customProto string, operations []string)
 	}
 
 	proto := HttpVersionResponse.ProtoVersion
-	if customProto != "" && customProto != HttpVersionResponse.ProtoVersion {
+	if customProto != "" {
 		proto = customProto
 	}
 

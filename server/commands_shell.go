@@ -32,7 +32,7 @@ func (c *ShellCommand) Description() string { return shellDesc }
 func (c *ShellCommand) Usage() string       { return shellUsage }
 
 func (c *ShellCommand) Run(ctx *ExecutionContext, args []string) error {
-	svr := ctx.getServer()
+	svr := ctx.server
 	ui := ctx.UI()
 
 	flags := pflag.NewFlagSet(shellCmd, pflag.ContinueOnError)

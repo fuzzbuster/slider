@@ -16,7 +16,6 @@ func killLocalSocksServer(svr *server, ui UserInterface) error {
 
 	err := svr.localSocks.server.Stop()
 	svr.localSocks.server = nil
-	svr.localSocks.port = 0
 	svr.localSocks.mu.Unlock()
 
 	if err != nil {
@@ -30,8 +29,8 @@ func killLocalSocksServer(svr *server, ui UserInterface) error {
 // createLocalSocksServer creates a standalone local SOCKS server
 func createLocalSocksServer(svr *server, ui UserInterface, port int, expose bool) error {
 	svr.localSocks.mu.Lock()
-	if svr.localSocks.port != 0 {
-		existingPort := svr.localSocks.port
+	if svr.localSocks.server != nil {
+		existingPort := svr.localSocks.server.Port()
 		svr.localSocks.mu.Unlock()
 		return fmt.Errorf("local SOCKS server already running on port: %d", existingPort)
 	}
@@ -44,7 +43,6 @@ func createLocalSocksServer(svr *server, ui UserInterface, port int, expose bool
 
 	svr.localSocks.mu.Lock()
 	svr.localSocks.server = localSvr
-	svr.localSocks.port = localSvr.Port()
 	svr.localSocks.mu.Unlock()
 
 	ui.PrintSuccess("Local listener started on port: %d", localSvr.Port())
@@ -54,7 +52,6 @@ func createLocalSocksServer(svr *server, ui UserInterface, port int, expose bool
 
 		svr.localSocks.mu.Lock()
 		svr.localSocks.server = nil
-		svr.localSocks.port = 0
 		svr.localSocks.mu.Unlock()
 	}()
 

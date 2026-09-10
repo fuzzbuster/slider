@@ -22,7 +22,7 @@ func (c *SocksCommand) Description() string { return socksDesc }
 func (c *SocksCommand) Usage() string       { return socksUsage }
 
 func (c *SocksCommand) Run(ctx *ExecutionContext, args []string) error {
-	svr := ctx.getServer()
+	svr := ctx.server
 	ui := ctx.UI()
 
 	socksFlags := pflag.NewFlagSet(socksCmd, pflag.ContinueOnError)

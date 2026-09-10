@@ -53,7 +53,7 @@ func (c *SftpExecuteCommand) Run(execCtx *ExecutionContext, args []string) error
 	// but the `session` in context is the *connection* session (which might be a gateway).
 
 	// We use the TargetID stored in the SFTP context to look up the Unified Session details.
-	svr := execCtx.getServer()
+	svr := execCtx.server
 	unifiedMap := svr.ResolveUnifiedSessions()
 	uSess, ok := unifiedMap[sftpCtx.GetTargetID()]
 	if !ok {

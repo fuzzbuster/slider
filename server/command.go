@@ -25,11 +25,6 @@ type ExecutionContext struct {
 	sftpRegistry *CommandRegistry    // nil for non-sftp commands
 }
 
-// Server returns the server instance
-func (c *ExecutionContext) getServer() *server {
-	return c.server
-}
-
 // Session returns the session instance (may be nil)
 func (c *ExecutionContext) Session() *session.BidirectionalSession {
 	return c.session

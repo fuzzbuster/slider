@@ -46,7 +46,7 @@ func (c *HelpCommand) Name() string        { return helpCmd }
 func (c *HelpCommand) Description() string { return helpDesc }
 func (c *HelpCommand) Usage() string       { return helpCmd }
 func (c *HelpCommand) Run(ctx *ExecutionContext, _ []string) error {
-	svr := ctx.getServer()
+	svr := ctx.server
 	ui := ctx.UI()
 
 	tw := new(tabwriter.Writer)

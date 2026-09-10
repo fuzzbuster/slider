@@ -19,7 +19,6 @@ func parsePort(input string) (uint32, error) {
 func parseForwarding(input string, reverse bool, protocol string) (*types.CustomTcpIpChannelMsg, error) {
 	var aAddr, bAddr string
 	var aPort, bPort uint32
-	msg := &types.CustomTcpIpChannelMsg{}
 
 	portFwd := strings.Split(input, ":")
 
@@ -30,7 +29,7 @@ func parseForwarding(input string, reverse bool, protocol string) (*types.Custom
 	case 1:
 		aPort, iErr = parsePort(portFwd[0])
 		if iErr != nil {
-			return msg, iErr
+			return nil, iErr
 		}
 		bPort = aPort
 	case 2:
@@ -39,11 +38,11 @@ func parseForwarding(input string, reverse bool, protocol string) (*types.Custom
 		}
 		aPort, iErr = parsePort(portFwd[0])
 		if iErr != nil {
-			return msg, iErr
+			return nil, iErr
 		}
 		bPort, iErr = parsePort(portFwd[1])
 		if iErr != nil {
-			return msg, iErr
+			return nil, iErr
 		}
 	case 3:
 		if reverse {
@@ -51,7 +50,7 @@ func parseForwarding(input string, reverse bool, protocol string) (*types.Custom
 		}
 		aPort, iErr = parsePort(portFwd[0])
 		if iErr != nil {
-			return msg, iErr
+			return nil, iErr
 		}
 		bAddr = portFwd[1]
 		if bAddr == "" {
@@ -59,7 +58,7 @@ func parseForwarding(input string, reverse bool, protocol string) (*types.Custom
 		}
 		bPort, iErr = parsePort(portFwd[2])
 		if iErr != nil {
-			return msg, iErr
+			return nil, iErr
 		}
 	case 4:
 		aAddr = portFwd[0]
@@ -71,7 +70,7 @@ func parseForwarding(input string, reverse bool, protocol string) (*types.Custom
 		}
 		aPort, iErr = parsePort(portFwd[1])
 		if iErr != nil {
-			return msg, iErr
+			return nil, iErr
 		}
 		bAddr = portFwd[2]
 		if bAddr == "" {
@@ -79,19 +78,21 @@ func parseForwarding(input string, reverse bool, protocol string) (*types.Custom
 		}
 		bPort, iErr = parsePort(portFwd[3])
 		if iErr != nil {
-			return msg, iErr
+			return nil, iErr
 		}
 	default:
-		return msg, fmt.Errorf("invalid Port Forwarding format: %s", input)
+		return nil, fmt.Errorf("invalid Port Forwarding format: %s", input)
 	}
 
-	msg.IsSshConn = false
-	msg.Protocol = protocol
-	msg.TcpIpChannelMsg = &types.TcpIpChannelMsg{
-		SrcHost: aAddr,
-		SrcPort: aPort,
-		DstHost: bAddr,
-		DstPort: bPort,
+	msg := &types.CustomTcpIpChannelMsg{
+		IsSshConn: false,
+		Protocol:  protocol,
+		TcpIpChannelMsg: &types.TcpIpChannelMsg{
+			SrcHost: aAddr,
+			SrcPort: aPort,
+			DstHost: bAddr,
+			DstPort: bPort,
+		},
 	}
 
 	return msg, nil

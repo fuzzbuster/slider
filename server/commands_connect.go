@@ -24,7 +24,7 @@ func (c *ConnectCommand) Name() string        { return connectCmd }
 func (c *ConnectCommand) Description() string { return connectDesc }
 func (c *ConnectCommand) Usage() string       { return connectUsage }
 func (c *ConnectCommand) Run(ctx *ExecutionContext, args []string) error {
-	svr := ctx.getServer()
+	svr := ctx.server
 	ui := ctx.UI()
 
 	connectFlags := pflag.NewFlagSet(connectCmd, pflag.ContinueOnError)

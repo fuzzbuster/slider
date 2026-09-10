@@ -146,21 +146,18 @@ func (s *Service) Serve(conn net.Conn) error {
 	envChange := make(chan []byte, 10)
 	defer close(envChange)
 
-	// Set environment variables
-
 	// Request alternate shell if enabled
 	if useAltShell {
-		var altC struct{ Key, Value string }
-		altC.Key = conf.SliderAltShellEnvVar
-		altC.Value = "true"
-		envVarList = append(envVarList, altC)
+		envVarList = append(envVarList, struct{ Key, Value string }{
+			Key:   conf.SliderAltShellEnvVar,
+			Value: "true",
+		})
 	}
 
-	// Finalize environment variables
-	var envCloser struct{ Key, Value string }
-	envCloser.Key = conf.SliderCloserEnvVar
-	envCloser.Value = "true"
-	envVarList = append(envVarList, envCloser)
+	envVarList = append(envVarList, struct{ Key, Value string }{
+		Key:   conf.SliderCloserEnvVar,
+		Value: "true",
+	})
 
 	result := make(chan error, 1)
 	go func() {
@@ -207,7 +204,6 @@ func (s *Service) interactiveConnPipe(conn net.Conn, channelType string, payload
 	}
 	defer func() { _ = sliderClientChannel.Close() }()
 
-	// Handle window-change events
 	go func() {
 		for sizeBytes := range winChange {
 			_, wErr := sliderClientChannel.SendRequest(conf.SSHRequestWindowChange, true, sizeBytes)
@@ -220,7 +216,6 @@ func (s *Service) interactiveConnPipe(conn net.Conn, channelType string, payload
 		}
 	}()
 
-	// Handle environment variable events
 	go func() {
 		for envVarBytes := range envChange {
 			_, eErr := sliderClientChannel.SendRequest(conf.SSHRequestEnv, true, envVarBytes)
@@ -233,10 +228,8 @@ func (s *Service) interactiveConnPipe(conn net.Conn, channelType string, payload
 		}
 	}()
 
-	// Handle requests from the SSH channel
 	go ssh.DiscardRequests(shellRequests)
 
-	// Pipe SSH channel with connection
 	_, _ = sio.PipeWithCancel(conn, sliderClientChannel)
 
 	return nil

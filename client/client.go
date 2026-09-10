@@ -25,10 +25,6 @@ import (
 	"golang.org/x/crypto/ssh"
 )
 
-type sessionTrack struct {
-	Sessions map[int64]*session.BidirectionalSession // Map of Sessions
-}
-
 type client struct {
 	Logger            *slog.Logger
 	serverURL         *url.URL
@@ -36,9 +32,8 @@ type client struct {
 	wsConfig          *websocket.Dialer
 	httpHeaders       http.Header
 	sshConfig         *ssh.ClientConfig
-	shutdown          chan bool
 	serverFingerprint []string
-	sessionTrack      *sessionTrack
+	sessions          map[int64]*session.BidirectionalSession
 	sessionTrackMutex sync.Mutex
 	isListener        bool
 	isBeacon          bool
@@ -115,7 +110,6 @@ func (c *client) newSSHClient(sess *session.BidirectionalSession) {
 	// If we pass them to NewClient, it will consume them and reject all incoming channels
 	sshClient := ssh.NewClient(clientConn, nil, nil)
 
-	// Update the existing session with the SSH client
 	sess.SetSSHClient(sshClient)
 
 	c.Logger.InfoWith("Server connected",
@@ -123,11 +117,9 @@ func (c *client) newSSHClient(sess *session.BidirectionalSession) {
 	c.Logger.DebugWith("SSH connection established",
 		slog.F("session_id", sess.GetID()))
 
-	// Send Client Information to Server
 	clientInfo := &interpreter.Info{BaseInfo: c.interpreter.BaseInfo}
 	go c.sendClientInfo(sess, clientInfo)
 
-	// Set keepalive after connection is established
 	go sess.KeepAlive(c.keepalive)
 
 	// Use centralized channel routing
@@ -148,7 +140,7 @@ func (c *client) newWebSocketSession(wsConn *websocket.Conn, isListenerSession b
 	sess := session.NewClientToServerSession(c.Logger, wsConn, nil, c.interpreter, serverAddr)
 	sess.SetIsListener(isListenerSession)
 	sessionID := sess.GetID()
-	c.sessionTrack.Sessions[sessionID] = sess
+	c.sessions[sessionID] = sess
 
 	c.Logger.DebugWith("Session Stats (↑)",
 		slog.F("global", session.GetTotalCount()),
@@ -167,7 +159,7 @@ func (c *client) dropWebSocketSession(sess *session.BidirectionalSession) {
 	_ = sess.Close()
 
 	c.sessionTrackMutex.Lock()
-	delete(c.sessionTrack.Sessions, sessionID)
+	delete(c.sessions, sessionID)
 	c.sessionTrackMutex.Unlock()
 
 	c.Logger.DebugWith("Session Stats (↓)",

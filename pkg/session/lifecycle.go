@@ -47,7 +47,6 @@ func NewClientToServerSession(
 		sshClient:        sshClient,
 		localInterpreter: localInterp,
 		peerBaseInfo:     interpreter.BaseInfo{}, // Initialized empty, populated via handshake
-		serverAddr:       serverAddr,
 
 		KeepAliveChan: make(chan bool, 1),
 		active:        true,

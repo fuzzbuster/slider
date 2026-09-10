@@ -33,7 +33,6 @@ type Config struct {
 	allowedFingerprint string
 	exposePort         bool
 	ptyOn              bool
-	enabled            bool
 	tlsOn              bool
 	interactiveOn      bool
 	useAltShell        bool

@@ -8,17 +8,15 @@ import (
 const KeyEscape = 27
 
 var (
-	// Terminal Escape Sequences
-	resetColor    = []byte{KeyEscape, '[', '0', 'm'}
-	eraseLine     = []byte{KeyEscape, '[', '2', 'K'}
-	eraseScreen   = []byte{KeyEscape, '[', '2', 'J'}
-	cursorClear   = []byte{KeyEscape, '[', '0', 'J'}
-	cursorHome    = []byte{KeyEscape, '[', 'H'}
-	cursorUp      = []byte{KeyEscape, '[', '1', 'A'}
-	cursorRequest = []byte{KeyEscape, '[', '6', 'n'}
-	blink         = []byte{KeyEscape, '[', '5', 'm'}
-	resetBlink    = []byte{KeyEscape, '[', '2', '5', 'm'}
-	// Colors
+	resetColor       = []byte{KeyEscape, '[', '0', 'm'}
+	eraseLine        = []byte{KeyEscape, '[', '2', 'K'}
+	eraseScreen      = []byte{KeyEscape, '[', '2', 'J'}
+	cursorClear      = []byte{KeyEscape, '[', '0', 'J'}
+	cursorHome       = []byte{KeyEscape, '[', 'H'}
+	cursorUp         = []byte{KeyEscape, '[', '1', 'A'}
+	cursorRequest    = []byte{KeyEscape, '[', '6', 'n'}
+	blink            = []byte{KeyEscape, '[', '5', 'm'}
+	resetBlink       = []byte{KeyEscape, '[', '2', '5', 'm'}
 	greenBold        = []byte{KeyEscape, '[', '1', ';', '3', '2', 'm'}
 	greyBold         = []byte{KeyEscape, '[', '1', ';', '9', '0', 'm'}
 	redBrightBold    = []byte{KeyEscape, '[', '1', ';', '9', '1', 'm'}
@@ -45,8 +43,6 @@ func SetColors(enabled bool) {
 		cursorHome = []byte("\n")
 	}
 }
-
-// Cursor
 
 func CursorEraseLine() string {
 	return string(eraseLine)
@@ -90,8 +86,6 @@ func readResponse(r io.Reader) string {
 	n, _ := r.Read(buf)
 	return string(buf[:n])
 }
-
-// Colors
 
 func BlinkText(m string) string {
 	return fmt.Sprintf("%s%s%s", string(blink), m, string(resetBlink))

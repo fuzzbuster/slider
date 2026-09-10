@@ -30,7 +30,7 @@ func (c *PortFwdCommand) Name() string        { return portFwdCmd }
 func (c *PortFwdCommand) Description() string { return portFwdDesc }
 func (c *PortFwdCommand) Usage() string       { return portFwdUsage }
 func (c *PortFwdCommand) Run(ctx *ExecutionContext, args []string) error {
-	svr := ctx.getServer()
+	svr := ctx.server
 	ui := ctx.UI()
 
 	portFwdFlags := pflag.NewFlagSet(portFwdCmd, pflag.ContinueOnError)

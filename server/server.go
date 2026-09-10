@@ -28,8 +28,7 @@ const (
 
 // sessionTrack keeps track of sessions and clients
 type sessionTrack struct {
-	SessionActive int64                                   // Number of Active Sessions
-	Sessions      map[int64]*session.BidirectionalSession // Map of Sessions
+	Sessions map[int64]*session.BidirectionalSession // Map of Sessions
 }
 
 type server struct {
@@ -74,7 +73,6 @@ type server struct {
 type LocalSocksServer struct {
 	mu     sync.Mutex
 	server *socks.LocalServer
-	port   int
 }
 
 type RemoteSessionState struct {
@@ -219,11 +217,6 @@ func (s *server) GetLogger() *slog.Logger {
 	return s.Logger
 }
 
-// GetInterpreter returns the server interpreter
-func (s *server) GetInterpreter() *interpreter.Interpreter {
-	return s.serverInterpreter
-}
-
 // GetSession retrieves a session by ID
 // Implements session.ApplicationServer interface
 func (s *server) GetSession(id int) (*session.BidirectionalSession, error) {
@@ -284,13 +277,12 @@ func (s *server) addSession(sess *session.BidirectionalSession) {
 	defer s.sessionTrackMutex.Unlock()
 
 	s.sessionTrack.Sessions[sess.GetID()] = sess
-	s.sessionTrack.SessionActive++
 }
 
 func (s *server) activeSessionCount() int64 {
 	s.sessionTrackMutex.RLock()
 	defer s.sessionTrackMutex.RUnlock()
-	return s.sessionTrack.SessionActive
+	return int64(len(s.sessionTrack.Sessions))
 }
 
 // dropWebSocketSession removes a session from tracking
@@ -311,7 +303,6 @@ func (s *server) dropWebSocketSession(sess *session.BidirectionalSession) {
 
 	if _, ok := s.sessionTrack.Sessions[id]; ok {
 		delete(s.sessionTrack.Sessions, id)
-		s.sessionTrack.SessionActive--
 	}
 }
 

@@ -66,20 +66,6 @@ func (p *Proxy) SendRequest(name string, wantReply bool, payload []byte) (bool, 
 	return p.gateway.GetSSHClient().SendRequest(conf.SSHRequestSliderTCPIPForward, wantReply, data)
 }
 
-// ParsePath parses a target path from []int64 and returns the next hop ID and the remaining path
-func (p *Proxy) ParsePath() (nextHop int, remaining []int64, err error) {
-	if len(p.targetPath) == 0 {
-		return 0, nil, nil
-	}
-
-	nextHop = int(p.targetPath[0])
-	if len(p.targetPath) > 1 {
-		remaining = p.targetPath[1:]
-	}
-
-	return nextHop, remaining, nil
-}
-
 // ConnectRequest defines the payload for slider-connect channel
 type ConnectRequest struct {
 	Target      []int64 `json:"target"`       // Target path (e.g., [1, 2, 3])

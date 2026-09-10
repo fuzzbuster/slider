@@ -18,7 +18,7 @@ func winIsPathSeparator(b byte) bool {
 
 // winFromSlash replaces forward slashes with Windows path separators
 func winFromSlash(path string) string {
-	return replaceSlashes(path, '/', WindowsSeparator)
+	return strings.ReplaceAll(path, string(UnixSeparator), string(WindowsSeparator))
 }
 
 // winIsReservedName checks if the path is a Windows reserved name
@@ -122,7 +122,6 @@ func winIsAbs(path string) bool {
 
 // winJoin joins Windows path elements
 func winJoin(elem []string) string {
-	// Find first non-empty element
 	firstIdx := 0
 	for i, e := range elem {
 		if e != "" {
@@ -131,38 +130,29 @@ func winJoin(elem []string) string {
 		}
 	}
 
-	// If all elements are empty, return empty string
 	if firstIdx >= len(elem) {
 		return ""
 	}
 
-	// Handle the case where the first element is a drive letter
 	first := elem[firstIdx]
 	isDriveLetter := len(first) == 2 && first[1] == ':'
 
 	if isDriveLetter {
-		// Handle drive letter specially
 		var parts []string
-
-		// Add the drive letter
 		parts = append(parts, first)
 
-		// Add remaining non-empty elements
 		for _, e := range elem[firstIdx+1:] {
 			if e != "" {
 				parts = append(parts, e)
 			}
 		}
 
-		// Clean the joined path
 		return winClean(strings.Join(parts, string(WindowsSeparator)))
 	}
 
-	// Check if first element is a UNC path
 	isUNC := len(first) > 0 && winIsPathSeparator(first[0]) &&
 		(len(first) > 1 && winIsPathSeparator(first[1]))
 
-	// Join all non-empty elements
 	var parts []string
 	for _, e := range elem[firstIdx:] {
 		if e != "" {
@@ -175,10 +165,8 @@ func winJoin(elem []string) string {
 	// Preserve UNC path status
 	if isUNC && !strings.HasPrefix(joined, string(WindowsSeparator)+string(WindowsSeparator)) {
 		if strings.HasPrefix(joined, string(WindowsSeparator)) {
-			// Add one more separator at the beginning
 			return string(WindowsSeparator) + joined
 		}
-		// Add two separators at the beginning
 		return string(WindowsSeparator) + string(WindowsSeparator) + joined
 
 	}
@@ -251,12 +239,10 @@ func winBase(path string) string {
 
 // winClean cleans a Windows path
 func winClean(path string) string {
-	// Handle empty path
 	if path == "" {
 		return "."
 	}
 
-	// Get volume name
 	volLen := winVolumeNameLength(path)
 	vol := ""
 	if volLen > 0 {
@@ -264,70 +250,48 @@ func winClean(path string) string {
 		path = path[volLen:]
 	}
 
-	// Check if path starts with a separator
 	rooted := len(path) > 0 && winIsPathSeparator(path[0])
 
-	// Split path into components
 	var components []string
 
-	// Skip empty components and handle dots
 	start := 0
 	for i := 0; i <= len(path); i++ {
 		if i == len(path) || winIsPathSeparator(path[i]) {
-			// Extract component
 			component := path[start:i]
 
-			// Handle empty component and . component
 			switch component {
 			case "", ".":
-				// Skip this component
 			case "..":
-				// Handle .. component
 				if len(components) > 0 && components[len(components)-1] != ".." {
-					// Can go up one level, remove the last component
 					components = components[:len(components)-1]
 				} else if !rooted {
-					// Not rooted and can't go up, so keep the .. component
 					components = append(components, "..")
 				}
-				// If rooted and can't go up, ignore the .. component
 			default:
-				// Add normal component
 				components = append(components, component)
 			}
 
-			// Move to next component
 			start = i + 1
 		}
 	}
 
-	// Handle special case where path becomes empty
 	if !rooted && len(components) == 0 {
 		return "."
 	}
 
-	// Build the cleaned path
 	var result strings.Builder
 
-	// Add volume name
 	result.WriteString(winFromSlash(vol))
 
-	// Add root separator if path was rooted
 	if rooted {
 		result.WriteByte(WindowsSeparator)
 	}
 
-	// Add components with separators
 	for i, component := range components {
 		if i > 0 {
 			result.WriteByte(WindowsSeparator)
 		}
 		result.WriteString(component)
-	}
-
-	// Handle path with only the root slash
-	if rooted && len(components) == 0 {
-		return result.String()
 	}
 
 	return result.String()

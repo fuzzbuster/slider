@@ -16,7 +16,7 @@ func listSocksSessions(svr *server, ui UserInterface) error {
 		}
 	}
 	svr.localSocks.mu.Lock()
-	if svr.localSocks.port != 0 {
+	if svr.localSocks.server != nil {
 		totalSocks++
 	}
 	svr.localSocks.mu.Unlock()
@@ -29,8 +29,8 @@ func listSocksSessions(svr *server, ui UserInterface) error {
 		_, _ = fmt.Fprintf(tw, "\n\t----\t--\t----\t\n")
 
 		svr.localSocks.mu.Lock()
-		if svr.localSocks.port != 0 {
-			_, _ = fmt.Fprintf(tw, "\tLOCAL\t--\t%d\t\n", svr.localSocks.port)
+		if svr.localSocks.server != nil {
+			_, _ = fmt.Fprintf(tw, "\tLOCAL\t--\t%d\t\n", svr.localSocks.server.Port())
 		}
 		svr.localSocks.mu.Unlock()
 

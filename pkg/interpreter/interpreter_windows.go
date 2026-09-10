@@ -44,15 +44,12 @@ type Interpreter struct {
 }
 
 type winPty struct {
-	con *conpty.LocalConPty
+	*conpty.LocalConPty
 }
 
-func (p *winPty) Read(b []byte) (n int, err error)  { return p.con.Read(b) }
-func (p *winPty) Write(b []byte) (n int, err error) { return p.con.Write(b) }
-func (p *winPty) Close() error                      { return p.con.Close() }
-func (p *winPty) Resize(cols, rows uint32) error    { return p.con.Resize(int(cols), int(rows)) }
+func (p *winPty) Resize(cols, rows uint32) error { return p.LocalConPty.Resize(int(cols), int(rows)) }
 func (p *winPty) Wait() error {
-	_, err := p.con.Wait(context.Background())
+	_, err := p.LocalConPty.Wait(context.Background())
 	return err
 }
 
@@ -69,7 +66,7 @@ func StartPty(cmd *exec.Cmd, cols, rows uint32) (Pty, error) {
 		return nil, err
 	}
 
-	return &winPty{con: c}, nil
+	return &winPty{LocalConPty: c}, nil
 }
 
 func isPtyOn() bool {
@@ -179,11 +176,9 @@ func NewInterpreter() (*Interpreter, error) {
 	i.AltShellArgs = pShellArgs
 	i.AltShellExecArgs = pShellExecArgs
 
-	// Capture binary path
 	if exe, err := os.Executable(); err == nil {
 		i.SliderDir = exe
 	}
-	// Capture initial working directory
 	if wd, err := os.Getwd(); err == nil {
 		i.LaunchDir = wd
 	}

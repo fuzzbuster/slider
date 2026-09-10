@@ -80,11 +80,8 @@ func RunClient(cfg *Config) {
 	}
 
 	c := client{
-		Logger:   log,
-		shutdown: make(chan bool, 1),
-		sessionTrack: &sessionTrack{
-			Sessions: make(map[int64]*session.BidirectionalSession),
-		},
+		Logger:      log,
+		sessions:    make(map[int64]*session.BidirectionalSession),
 		customProto: cfg.CustomProto,
 		interpreter: i,
 		listenerConf: &listenerConf{
@@ -183,7 +180,6 @@ func RunClient(cfg *Config) {
 			}
 		}
 
-		// Start Listener in a goroutine
 		go func() {
 			handler := c.buildRouter()
 
@@ -208,7 +204,6 @@ func RunClient(cfg *Config) {
 		c.Logger.Infof("Listening on %s://%s", listenerProto, clientAddr.String())
 	}
 
-	// If ServerURL is provided, connect to Server
 	if cfg.ServerURL != "" {
 		su, uErr := listener.ResolveURL(cfg.ServerURL)
 		if uErr != nil {
@@ -268,7 +263,6 @@ func RunClient(cfg *Config) {
 			}
 		}
 	} else {
-		// If only listening, block here until shutdown
 		if cfg.ListenerOn {
 			<-shutdown
 		} else {

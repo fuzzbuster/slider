@@ -11,7 +11,7 @@ func unixIsPathSeparator(b byte) bool {
 
 // unixToSlash ensures forward slashes in a path (converts backslashes to forward slashes)
 func unixToSlash(path string) string {
-	return replaceSlashes(path, WindowsSeparator, '/')
+	return strings.ReplaceAll(path, string(WindowsSeparator), string(UnixSeparator))
 }
 
 // unixIsAbs reports whether a Unix path is absolute
@@ -103,72 +103,50 @@ func unixBase(path string) string {
 		path = path[:end]
 	}
 
-	// If empty (had only separators), return a single separator
-	if path == "" {
-		return string(UnixSeparator)
-	}
-
 	return path
 }
 
 // unixClean cleans a Unix path
 func unixClean(path string) string {
-	// Handle empty path
 	if path == "" {
 		return "."
 	}
 
-	// Check if path starts with a separator
-	rooted := len(path) > 0 && unixIsPathSeparator(path[0])
+	rooted := unixIsPathSeparator(path[0])
 
-	// Split path into components
 	var components []string
 
-	// Skip empty components and handle dots
 	start := 0
 	for i := 0; i <= len(path); i++ {
 		if i == len(path) || unixIsPathSeparator(path[i]) {
-			// Extract component
 			component := path[start:i]
 
-			// Handle empty component and . component
 			switch component {
 			case "", ".":
-				// Skip this component
 			case "..":
-				// Handle .. component
 				if len(components) > 0 && components[len(components)-1] != ".." {
-					// Can go up one level, remove the last component
 					components = components[:len(components)-1]
 				} else if !rooted {
-					// Not rooted and can't go up, so keep the .. component
 					components = append(components, "..")
 				}
-				// If rooted and can't go up, ignore the .. component
 			default:
-				// Add normal component
 				components = append(components, component)
 			}
 
-			// Move to next component
 			start = i + 1
 		}
 	}
 
-	// Handle special case where path becomes empty
 	if !rooted && len(components) == 0 {
 		return "."
 	}
 
-	// Build the cleaned path
 	var result strings.Builder
 
-	// Add root separator if path was rooted
 	if rooted {
 		result.WriteByte(UnixSeparator)
 	}
 
-	// Add components with separators
 	for i, component := range components {
 		if i > 0 {
 			result.WriteByte(UnixSeparator)

@@ -26,7 +26,7 @@ func (c *SSHCommand) Name() string        { return sshCmd }
 func (c *SSHCommand) Description() string { return sshDesc }
 func (c *SSHCommand) Usage() string       { return sshUsage }
 func (c *SSHCommand) Run(ctx *ExecutionContext, args []string) error {
-	svr := ctx.getServer()
+	svr := ctx.server
 	ui := ctx.UI()
 
 	sshFlags := pflag.NewFlagSet(sshCmd, pflag.ContinueOnError)

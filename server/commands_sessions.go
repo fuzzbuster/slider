@@ -25,7 +25,7 @@ func (c *SessionsCommand) Description() string { return sessionsDesc }
 func (c *SessionsCommand) Usage() string       { return sessionsUsage }
 
 func (c *SessionsCommand) Run(ctx *ExecutionContext, args []string) error {
-	svr := ctx.getServer()
+	svr := ctx.server
 	ui := ctx.UI()
 
 	flags := pflag.NewFlagSet(sessionsCmd, pflag.ContinueOnError)

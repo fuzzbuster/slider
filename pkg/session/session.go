@@ -75,10 +75,9 @@ type BidirectionalSession struct {
 	sftpWorkingDir string         // Save Working dir for the next run
 
 	// Server-specific metadata
-	hostIP     string
-	certInfo   certInfo
-	notifier   chan error
-	serverAddr string // For client role
+	hostIP   string
+	certInfo certInfo
+	notifier chan error
 
 	// Remote Session Tracking (GatewayRole/AgentRole if gateway)
 	remoteSessions      map[string]RemoteSession

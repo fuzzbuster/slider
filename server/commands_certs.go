@@ -24,7 +24,7 @@ func (c *CertsCommand) Name() string        { return certsCmd }
 func (c *CertsCommand) Description() string { return certsDesc }
 func (c *CertsCommand) Usage() string       { return certsUsage }
 func (c *CertsCommand) Run(ctx *ExecutionContext, args []string) error {
-	svr := ctx.getServer()
+	svr := ctx.server
 	ui := ctx.UI()
 
 	certsFlags := pflag.NewFlagSet(certsCmd, pflag.ContinueOnError)

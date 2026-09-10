@@ -30,22 +30,18 @@ type SftpCommandContext struct {
 func (s *server) initSftpRegistry(sess *session.BidirectionalSession) *CommandRegistry {
 	registry := NewCommandRegistry()
 
-	// Register basic commands
 	registry.Register(&SftpHelpCommand{})
 	registry.Register(&SftpExitCommand{})
 
-	// Register pwd commands
 	registry.Register(&SftpPwdCommand{isRemote: true})
 	registry.RegisterAlias("getwd", pwdCmd)
 	registry.Register(&SftpPwdCommand{isRemote: false})
 	registry.RegisterAlias("lgetwd", lPwdCmd)
 
-	// Register cd commands
 	registry.Register(&SftpCdCommand{isRemote: true})
 	registry.RegisterAlias("chdir", cdCmd)
 	registry.Register(&SftpCdCommand{isRemote: false})
 
-	// Register ls commands
 	registry.Register(&SftpLsCommand{isRemote: true})
 	registry.RegisterAlias("dir", lsCmd)
 	registry.RegisterAlias("list", lsCmd)
@@ -53,41 +49,33 @@ func (s *server) initSftpRegistry(sess *session.BidirectionalSession) *CommandRe
 	registry.RegisterAlias("ldir", lLsCmd)
 	registry.RegisterAlias("llist", lLsCmd)
 
-	// Register mkdir commands
 	registry.Register(&SftpMkdirCommand{isRemote: true})
 	registry.Register(&SftpMkdirCommand{isRemote: false})
 
-	// Register rm command (remote only)
 	registry.Register(&SftpRmCommand{})
 	registry.RegisterAlias("del", rmCmd)
 	registry.RegisterAlias("delete", rmCmd)
 
-	// Register stat command (remote only)
 	registry.Register(&SftpStatCommand{})
 	registry.RegisterAlias("info", statCmd)
 
-	// Register sysinfo command
 	registry.Register(&SftpSysInfoCommand{})
 
-	// Register mv command (remote only)
 	registry.Register(&SftpMvCommand{})
 	registry.RegisterAlias("rename", mvCmd)
 	registry.RegisterAlias("move", mvCmd)
 
-	// Register chmod command (remote only, non-Windows)
+	// chmod is not available on Windows targets.
 	if sess.GetPeerInfo().System != "windows" {
 		registry.Register(&SftpChmodCommand{})
 	}
 
-	// Register get command
 	registry.Register(&SftpGetCommand{})
 	registry.RegisterAlias("download", getCmd)
 
-	// Register put command
 	registry.Register(&SftpPutCommand{})
 	registry.RegisterAlias("upload", putCmd)
 
-	// Register execute command
 	registry.Register(&SftpExecuteCommand{})
 
 	return registry

@@ -34,7 +34,6 @@ and provides access to a remote slider console through your local terminal.
 	SilenceUsage: true,
 }
 
-// Hook flags
 var (
 	hookFingerprint string
 	hookAuthKey     string
@@ -47,7 +46,6 @@ var (
 func init() {
 	rootCmd.AddCommand(hookCmd)
 
-	// Define flags
 	hookCmd.Flags().StringVar(&hookFingerprint, "fingerprint", "", "Certificate fingerprint for authentication")
 	hookCmd.Flags().StringVar(&hookAuthKey, "auth-key", "", "Slider private key for challenge signing")
 	hookCmd.Flags().StringVar(&hookClientCert, "client-cert", "", "Client certificate for mTLS")
@@ -55,7 +53,6 @@ func init() {
 	hookCmd.Flags().StringVar(&hookCA, "ca", "", "CA certificate for server verification")
 	hookCmd.Flags().StringVar(&hookServerName, "server-name", "", "Server name for TLS verification")
 
-	// Mark flag dependencies
 	hookCmd.MarkFlagsRequiredTogether("fingerprint", "auth-key")
 	hookCmd.MarkFlagsRequiredTogether("client-cert", "client-key")
 }
@@ -63,7 +60,6 @@ func init() {
 func runHook(_ *cobra.Command, args []string) error {
 	serverURL := args[0]
 
-	// Parse and validate server URL
 	parsedURL, err := listener.ResolveURL(serverURL)
 	if err != nil {
 		return fmt.Errorf("invalid server URL: %w", err)
@@ -87,7 +83,6 @@ func runHook(_ *cobra.Command, args []string) error {
 		}
 	}
 
-	// Connect to WebSocket console
 	if err := connectToConsole(parsedURL, token, tlsConfig); err != nil {
 		return fmt.Errorf("connection failed: %w", err)
 	}
@@ -148,9 +143,7 @@ func getAuthToken(
 	authURL.Path = listener.AuthLoginPath
 	authURL.RawQuery = ""
 	var tokenResp struct {
-		Token     string `json:"token"`
-		ExpiresAt string `json:"expires_at"`
-		TokenType string `json:"token_type"`
+		Token string `json:"token"`
 	}
 	if err := doJSONPost(client, authURL.String(), map[string]string{
 		"fingerprint":  fingerprint,
@@ -198,7 +191,6 @@ func buildTLSConfig(certPath, keyPath, caPath, serverName string) (*tls.Config, 
 		tlsConfig.ServerName = serverName
 	}
 
-	// Load CA certificate if provided
 	if caPath != "" {
 		caCert, err := os.ReadFile(caPath)
 		if err != nil {
@@ -212,7 +204,6 @@ func buildTLSConfig(certPath, keyPath, caPath, serverName string) (*tls.Config, 
 	}
 
 	if certPath != "" && keyPath != "" {
-		// Load client certificate
 		cert, err := tls.LoadX509KeyPair(certPath, keyPath)
 		if err != nil {
 			return nil, fmt.Errorf("failed to load client certificate: %w", err)
@@ -250,7 +241,6 @@ func connectToConsole(baseURL *url.URL, token string, tlsConfig *tls.Config) err
 	}
 	defer func() { _ = wsConn.Close() }()
 
-	// Put terminal in raw mode
 	oldState, err := term.MakeRaw(int(os.Stdin.Fd()))
 	if err != nil {
 		return fmt.Errorf("failed to set terminal to raw mode: %w", err)
@@ -263,10 +253,8 @@ func connectToConsole(baseURL *url.URL, token string, tlsConfig *tls.Config) err
 		fmt.Println()
 	}()
 
-	// Channel to signal goroutine shutdown
 	done := make(chan struct{})
 
-	// Channel to signal connection closed (from either side)
 	connClosed := make(chan struct{})
 
 	var writeMutex sync.Mutex
@@ -321,16 +309,13 @@ func connectToConsole(baseURL *url.URL, token string, tlsConfig *tls.Config) err
 		}
 	}()
 
-	// Goroutine: Handle terminal resize
 	go monitorWindowResize(writeMessage, done)
 
-	// Send initial terminal size
 	sendTermSize(writeMessage)
 
 	// Connection closed by server (e.g., exit command) - this is normal
 	<-connClosed
 
-	// Signal all goroutines to stop
 	close(done)
 
 	return nil

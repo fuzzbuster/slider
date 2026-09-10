@@ -91,7 +91,7 @@ func (si *Config) serveEndpoint(listener net.Listener) error {
 
 	run := newEndpointRun(listener)
 	si.instanceMutex.Lock()
-	if si.enabled {
+	if si.run != nil {
 		si.instanceMutex.Unlock()
 		_ = listener.Close()
 		return fmt.Errorf("endpoint is already running")
@@ -99,7 +99,6 @@ func (si *Config) serveEndpoint(listener net.Listener) error {
 	si.run = run
 	endpointPort := listener.Addr().(*net.TCPAddr).Port
 	si.port = endpointPort
-	si.enabled = true
 	opener := si.sshSessionConn
 	serviceManager := si.serviceManager
 	portFwdManager := si.portFwdManager
@@ -126,7 +125,6 @@ func (si *Config) serveEndpoint(listener net.Listener) error {
 		if si.run == run {
 			si.run = nil
 			si.port = 0
-			si.enabled = false
 			si.interactiveOn = false
 		}
 		si.instanceMutex.Unlock()
@@ -192,7 +190,7 @@ func (si *Config) handleEndpointConnection(
 func (si *Config) IsEnabled() bool {
 	si.instanceMutex.RLock()
 	defer si.instanceMutex.RUnlock()
-	return si.enabled
+	return si.run != nil
 }
 
 func (si *Config) isExposed() bool {
@@ -210,7 +208,7 @@ func (si *Config) IsTLSOn() bool {
 func (si *Config) GetEndpointPort() (int, error) {
 	si.instanceMutex.RLock()
 	defer si.instanceMutex.RUnlock()
-	if !si.enabled {
+	if si.run == nil {
 		return 0, fmt.Errorf("endpoint is not running")
 	}
 	return si.port, nil
@@ -219,9 +217,8 @@ func (si *Config) GetEndpointPort() (int, error) {
 func (si *Config) Stop() error {
 	si.instanceMutex.RLock()
 	run := si.run
-	enabled := si.enabled
 	si.instanceMutex.RUnlock()
-	if !enabled || run == nil {
+	if run == nil {
 		return fmt.Errorf("endpoint is not running")
 	}
 

@@ -60,24 +60,33 @@ func TestInstance(t *testing.T) {
 		}
 
 		instance := New(config)
-		instance.enabled = true
+		listener, err := net.Listen("tcp", "127.0.0.1:0")
+		if err != nil {
+			t.Fatalf("Failed to listen: %v", err)
+		}
+		run := newEndpointRun(listener)
+		instance.run = run
+		instance.port = listener.Addr().(*net.TCPAddr).Port
+		defer run.stop()
 
 		port, err := instance.GetEndpointPort()
 		if err != nil {
 			t.Errorf("Unexpected error: %v", err)
 		}
 
-		if port != 12345 {
-			t.Errorf("Expected port 12345, got %d", port)
+		if port != instance.port {
+			t.Errorf("Expected port %d, got %d", instance.port, port)
 		}
 
-		// Test non-enabled instance
-		instance = New(config)
-		instance.enabled = false
+		// Test non-running instance
+		instance = New(&Config{
+			Logger: logger,
+			port:   12345,
+		})
 
 		_, err = instance.GetEndpointPort()
 		if err == nil {
-			t.Error("Expected error for non-endpoint instance, got nil")
+			t.Error("Expected error for non-running instance, got nil")
 		}
 	})
 

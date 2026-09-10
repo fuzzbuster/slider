@@ -10,7 +10,6 @@ import (
 
 // buildRouter creates the HTTP router with all configured endpoints
 func (c *client) buildRouter() http.Handler {
-	// Get base router with common endpoints
 	mux := listener.NewRouter(&listener.RouterConfig{
 		TemplatePath: c.templatePath,
 		ServerHeader: c.serverHeader,
@@ -36,7 +35,6 @@ func (c *client) buildRouter() http.Handler {
 		if listener.IsSliderWebSocket(r, c.customProto, acceptedOps) {
 			op := r.Header.Get("Sec-WebSocket-Operation")
 
-			// Check if this is a Beacon connection (Only allowed in Beacon mode)
 			if op == conf.OperationAgent {
 				if c.isBeacon {
 					c.handleBeaconConnection(w, r)
@@ -47,7 +45,6 @@ func (c *client) buildRouter() http.Handler {
 				return
 			}
 
-			// Handle Server Connections (Only allowed in Listener mode)
 			if c.isListener {
 				c.handleWebSocket(w, r)
 			} else {
@@ -95,7 +92,7 @@ func (c *client) getUpstreamSession() *session.BidirectionalSession {
 	// Return the first non-listener session, since this refers to the
 	// outbound connection there should be only one available or none
 	// if disconnected.
-	for _, sess := range c.sessionTrack.Sessions {
+	for _, sess := range c.sessions {
 		if !sess.GetIsListener() && sess.GetSSHClient() != nil {
 			return sess
 		}

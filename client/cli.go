@@ -64,7 +64,6 @@ to the defined Slider Server.`,
 				}
 			}
 
-			// Validate argument count
 			if !listenerOn && len(args) != 1 {
 				return fmt.Errorf("client requires exactly one valid server address as an argument (unless in --listener mode)")
 			}
@@ -72,7 +71,6 @@ to the defined Slider Server.`,
 				return fmt.Errorf("server address cannot be provided in --listener mode")
 			}
 
-			// Build configuration from flags
 			cfg := &Config{
 				Verbose:       verbose,
 				Keepalive:     keepalive,
@@ -103,12 +101,10 @@ to the defined Slider Server.`,
 				CallerLog:     callerLog,
 			}
 
-			// Add server URL if provided
 			if len(args) > 0 {
 				cfg.ServerURL = args[0]
 			}
 
-			// Call the RunClient function
 			RunClient(cfg)
 			return nil
 		},

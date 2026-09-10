@@ -21,16 +21,13 @@ func GetSliderHome() string {
 	if sliderHome == "" {
 		userHome, err := os.UserHomeDir()
 		if err == nil {
+			sliderDir := ".slider"
 			if runtime.GOOS == "windows" {
-				sliderHome = userHome + string(os.PathSeparator) + "slider" + string(os.PathSeparator)
-				if err = ensurePath(sliderHome); err == nil {
-					return sliderHome
-				}
-			} else {
-				sliderHome = userHome + string(os.PathSeparator) + ".slider" + string(os.PathSeparator)
-				if err = ensurePath(sliderHome); err == nil {
-					return sliderHome
-				}
+				sliderDir = "slider"
+			}
+			sliderHome = userHome + string(os.PathSeparator) + sliderDir + string(os.PathSeparator)
+			if err = ensurePath(sliderHome); err == nil {
+				return sliderHome
 			}
 		}
 		sliderHome, err = os.Getwd()
@@ -45,10 +42,8 @@ func GetSliderHome() string {
 func GetSSHCertsPath() string {
 	homePath := GetSliderHome()
 	sshPath := homePath + "ssh/"
-	if _, err := os.Stat(sshPath); os.IsNotExist(err) {
-		if err = ensurePath(sshPath); err != nil {
-			return homePath
-		}
+	if err := ensurePath(sshPath); err != nil {
+		return homePath
 	}
 	return sshPath
 }
