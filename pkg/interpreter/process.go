@@ -2,11 +2,12 @@ package interpreter
 
 import (
 	"os"
+	"path/filepath"
 	"strings"
 	"unicode"
 )
 
-const maxProcessNameRunes = 128
+const maxProcessNameRunes = 255
 
 func currentProcessInfo() ProcessInfo {
 	info := ProcessInfo{
@@ -16,6 +17,22 @@ func currentProcessInfo() ProcessInfo {
 		info.PID = uint32(pid)
 	}
 	return SanitizeProcessInfo(info)
+}
+
+func executableProcessName() string {
+	executable, err := os.Executable()
+	if err != nil {
+		return ""
+	}
+	return processNameFromExecutablePath(executable)
+}
+
+func processNameFromExecutablePath(executable string) string {
+	name := filepath.Base(executable)
+	if name == "." || name == string(filepath.Separator) {
+		return ""
+	}
+	return name
 }
 
 // SanitizeProcessInfo makes untrusted process metadata safe for terminal output.

@@ -9,6 +9,9 @@ func TestNativeProcessNameDarwin(t *testing.T) {
 	if name == "" {
 		t.Fatal("nativeProcessName() returned an empty Darwin process name")
 	}
+	if want := executableProcessName(); name != want {
+		t.Fatalf("nativeProcessName() = %q, want full executable name %q", name, want)
+	}
 	if got := SanitizeProcessName(name); got != name {
 		t.Fatalf("nativeProcessName() = %q, sanitized value = %q", name, got)
 	}

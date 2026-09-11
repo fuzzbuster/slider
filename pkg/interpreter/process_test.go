@@ -2,12 +2,24 @@ package interpreter
 
 import (
 	"os"
+	"path/filepath"
 	"runtime"
 	"strings"
 	"testing"
 	"unicode"
 	"unicode/utf8"
 )
+
+func TestProcessNameFromExecutablePathPreservesLongName(t *testing.T) {
+	name := strings.Repeat("slider-", 20)
+	got := processNameFromExecutablePath(filepath.Join("tmp", name))
+	if got != name {
+		t.Fatalf("processNameFromExecutablePath() = %q, want %q", got, name)
+	}
+	if utf8.RuneCountInString(got) <= 16 {
+		t.Fatalf("process name was unexpectedly truncated: %q", got)
+	}
+}
 
 func TestSanitizeProcessName(t *testing.T) {
 	t.Run("preserves printable Unicode", func(t *testing.T) {

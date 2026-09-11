@@ -353,10 +353,11 @@ Running an interactive session provides its own sets of commands:
   !command          Execute "command" in local shell (non-interactive)
 ```
 
-`sysinfo` also reports the peer Process Name and PID. Process names are obtained
-from the native process interfaces on Linux, macOS and Windows; a failed lookup
-is displayed as `--` and never falls back to the binary path or command-line
-arguments.
+`sysinfo` also reports the peer Process Name and PID. Linux and macOS derive the
+full name from the OS-reported executable location but transmit only its
+sanitized basename; Windows uses the native process snapshot API. A failed
+lookup is displayed as `--`, and command-line arguments are never used as a
+fallback. Names are bounded to 255 Unicode code points.
 
 Process Name and PID are untrusted, sanitized diagnostics. They are not used for
 authentication, authorization, routing, session identity, logging or command
