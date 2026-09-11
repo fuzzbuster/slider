@@ -1,6 +1,7 @@
 package session
 
 import (
+	"encoding/json"
 	"errors"
 	"testing"
 
@@ -342,6 +343,120 @@ func TestSessionLookup(t *testing.T) {
 	_, err = requestingSession.applicationServer.GetSession(999)
 	if err == nil {
 		t.Error("Expected error for non-existent session")
+	}
+}
+
+func TestPeerProcessInfoIsSanitizedAndIsolated(t *testing.T) {
+	sess := NewTestSession(42).Build()
+	sess.SetPeerInfo(interpreter.BaseInfo{System: "linux", User: "tester"})
+	originalRole := sess.GetRole()
+	originalID := sess.GetID()
+
+	sess.SetPeerProcessInfo(interpreter.ProcessInfo{
+		Name: "slider\x1b[2J\nclient",
+		PID:  1234,
+	})
+	got := sess.GetPeerProcessInfo()
+	if got.Name != "slider\uFFFD[2J\uFFFDclient" {
+		t.Fatalf("GetPeerProcessInfo().Name = %q", got.Name)
+	}
+	if got.PID != 1234 {
+		t.Fatalf("GetPeerProcessInfo().PID = %d, want 1234", got.PID)
+	}
+
+	got.Name = "mutated"
+	if current := sess.GetPeerProcessInfo(); current.Name == got.Name {
+		t.Fatal("GetPeerProcessInfo returned mutable session state")
+	}
+	if sess.GetID() != originalID || sess.GetRole() != originalRole {
+		t.Fatal("process diagnostics changed session identity or role")
+	}
+	if peer := sess.GetPeerInfo(); peer.System != "linux" || peer.User != "tester" {
+		t.Fatalf("process diagnostics changed BaseInfo: %#v", peer)
+	}
+}
+
+func TestInfoWithoutProcessRemainsCompatible(t *testing.T) {
+	var info interpreter.Info
+	if err := json.Unmarshal([]byte(`{"Arch":"amd64","System":"linux","User":"tester"}`), &info); err != nil {
+		t.Fatal(err)
+	}
+	if info.Process != nil {
+		t.Fatalf("legacy client info produced process metadata: %#v", info.Process)
+	}
+	if info.System != "linux" || info.User != "tester" {
+		t.Fatalf("legacy client info was not preserved: %#v", info.BaseInfo)
+	}
+}
+
+func TestRemoteSessionProcessInfoRoundTrip(t *testing.T) {
+	original := RemoteSession{
+		ID:      7,
+		Process: &interpreter.ProcessInfo{Name: "slider-client", PID: 99},
+	}
+	payload, err := json.Marshal(original)
+	if err != nil {
+		t.Fatal(err)
+	}
+	var decoded RemoteSession
+	if err := json.Unmarshal(payload, &decoded); err != nil {
+		t.Fatal(err)
+	}
+	if decoded.Process == nil || *decoded.Process != *original.Process {
+		t.Fatalf("decoded process metadata = %#v, want %#v", decoded.Process, original.Process)
+	}
+	var legacy RemoteSession
+	if err := json.Unmarshal([]byte(`{"ID":7,"Role":"agent/c"}`), &legacy); err != nil {
+		t.Fatal(err)
+	}
+	if legacy.Process != nil {
+		t.Fatalf("legacy remote session produced process metadata: %#v", legacy.Process)
+	}
+
+	sess := NewTestSession(8).Build()
+	sess.AddRemoteSession("remote", RemoteSession{
+		ID:      9,
+		Process: &interpreter.ProcessInfo{Name: "bad\tname", PID: 100},
+	})
+	stored, found := sess.GetRemoteSession("remote")
+	if !found || stored.Process == nil {
+		t.Fatal("remote process metadata was not stored")
+	}
+	if stored.Process.Name != "bad\uFFFDname" || stored.Process.PID != 100 {
+		t.Fatalf("stored remote process metadata = %#v", stored.Process)
+	}
+}
+
+func TestRemoteSessionProcessInfoSurvivesGatewayHops(t *testing.T) {
+	sessions := []RemoteSession{{
+		ID:      11,
+		Process: &interpreter.ProcessInfo{Name: "slider\nclient", PID: 123},
+	}}
+	for hop := int64(1); hop <= 2; hop++ {
+		payload, err := json.Marshal(sessions)
+		if err != nil {
+			t.Fatal(err)
+		}
+		var next []RemoteSession
+		if err := json.Unmarshal(payload, &next); err != nil {
+			t.Fatal(err)
+		}
+		for index := range next {
+			next[index].Process = sanitizeProcessInfoPointer(next[index].Process)
+			next[index].Path = append([]int64{hop}, next[index].Path...)
+		}
+		sessions = next
+	}
+
+	if len(sessions) != 1 || sessions[0].Process == nil {
+		t.Fatalf("two-hop process metadata = %#v", sessions)
+	}
+	if sessions[0].Process.Name != "slider\uFFFDclient" ||
+		sessions[0].Process.PID != 123 {
+		t.Fatalf("two-hop process metadata = %#v", sessions[0].Process)
+	}
+	if len(sessions[0].Path) != 2 {
+		t.Fatalf("two-hop path = %v", sessions[0].Path)
 	}
 }
 

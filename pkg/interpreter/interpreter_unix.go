@@ -20,6 +20,7 @@ const (
 
 type Interpreter struct {
 	BaseInfo
+	ProcessInfo       ProcessInfo
 	Shell             string   `json:"Shell"`
 	ShellSeparator    string   `json:"ShellSeparator"`
 	ShellArgs         []string `json:"ShellArgs"`
@@ -112,6 +113,7 @@ func NewInterpreter() (*Interpreter, error) {
 
 	i.Arch = runtime.GOARCH
 	i.System = runtime.GOOS
+	i.ProcessInfo = currentProcessInfo()
 	i.User = "--"
 	i.HomeDir = "/"
 	if u, uErr := user.Current(); uErr == nil {

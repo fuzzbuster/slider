@@ -24,8 +24,9 @@ type UnifiedSession struct {
 	Key       SessionKey
 	Role      string
 
-	BaseInfo   interpreter.BaseInfo
-	WorkingDir string
+	BaseInfo    interpreter.BaseInfo
+	ProcessInfo interpreter.ProcessInfo
+	WorkingDir  string
 
 	IsConnector    bool
 	IsGateway      bool
@@ -75,11 +76,12 @@ func (s *server) collectLocalSessions(
 
 func (s *server) createUnifiedFromLocal(sess *session.BidirectionalSession) UnifiedSession {
 	unified := UnifiedSession{
-		UnifiedID: sess.GetID(),
-		ActualID:  sess.GetID(),
-		OwnerID:   sess.GetParentSessionID(),
-		Key:       newSessionKey(0, nil, sess.GetID()),
-		BaseInfo:  sess.GetPeerInfo(),
+		UnifiedID:   sess.GetID(),
+		ActualID:    sess.GetID(),
+		OwnerID:     sess.GetParentSessionID(),
+		Key:         newSessionKey(0, nil, sess.GetID()),
+		BaseInfo:    sess.GetPeerInfo(),
+		ProcessInfo: sess.GetPeerProcessInfo(),
 	}
 	if sess.GetRouter() != nil || (sess.GetSSHClient() != nil && !sess.GetIsListener()) {
 		if addr := sess.GetRemoteAddr(); addr != nil {
@@ -145,6 +147,10 @@ func (s *server) createUnifiedFromRemote(
 ) UnifiedSession {
 	remote := entry.rs
 	key := newSessionKey(entry.gatewayID, remote.Path, remote.ID)
+	var processInfo interpreter.ProcessInfo
+	if remote.Process != nil {
+		processInfo = interpreter.SanitizeProcessInfo(*remote.Process)
+	}
 	return UnifiedSession{
 		UnifiedID:      lookup[key],
 		ActualID:       remote.ID,
@@ -152,6 +158,7 @@ func (s *server) createUnifiedFromRemote(
 		GatewayID:      entry.gatewayID,
 		Key:            key,
 		BaseInfo:       remote.BaseInfo,
+		ProcessInfo:    processInfo,
 		Role:           remote.Role,
 		WorkingDir:     remote.WorkingDir,
 		IsConnector:    remote.IsConnector,

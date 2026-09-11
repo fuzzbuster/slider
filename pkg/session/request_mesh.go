@@ -90,6 +90,7 @@ func (s *BidirectionalSession) handleSliderSessions(req *ssh.Request) {
 			ParentSessionID:   sess.GetParentSessionID(),
 			ServerFingerprint: fingerprint,
 			BaseInfo:          sess.GetPeerInfo(),
+			Process:           processInfoPointer(sess.GetPeerProcessInfo()),
 			Role:              sess.GetPeerRole().String(),
 			WorkingDir:        workingDir,
 			IsConnector:       sess.GetRole().IsConnector(),
@@ -111,11 +112,15 @@ func (s *BidirectionalSession) handleSliderSessions(req *ssh.Request) {
 			continue
 		}
 		for i := range remoteSessions {
+			remoteSessions[i].Process = sanitizeProcessInfoPointer(remoteSessions[i].Process)
 			remoteSessions[i].Path = append([]int64{clientSess.GetID()}, remoteSessions[i].Path...)
 		}
 		sessions = append(sessions, remoteSessions...)
 	}
 
+	for i := range sessions {
+		sessions[i].Process = sanitizeProcessInfoPointer(sessions[i].Process)
+	}
 	payload, err := json.Marshal(sessions)
 	if err != nil {
 		s.logger.DErrorWith("Failed to marshal sessions response",

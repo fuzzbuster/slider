@@ -64,8 +64,10 @@ func (s *server) NewSSHClient(
 	// Identify ourselves to the upstream server
 	interp, iErr := interpreter.NewInterpreter()
 	if iErr == nil {
+		processInfo := interp.ProcessInfo
 		clientInfo := &interpreter.Info{
 			BaseInfo: interp.BaseInfo,
+			Process:  &processInfo,
 			Identity: s.GetServerIdentity(), // Include our identity (fingerprint:port)
 		}
 		payload, _ := json.Marshal(clientInfo)
@@ -77,6 +79,9 @@ func (s *server) NewSSHClient(
 			if mErr := json.Unmarshal(reply, &ciAnswer); mErr == nil {
 				if ciAnswer.User != "" {
 					biSession.SetPeerInfo(ciAnswer.BaseInfo)
+				}
+				if ciAnswer.Process != nil {
+					biSession.SetPeerProcessInfo(*ciAnswer.Process)
 				}
 				// Store peer's identity if provided
 				if ciAnswer.Identity != "" {

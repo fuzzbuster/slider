@@ -21,6 +21,7 @@ type SftpConsoleOptions struct {
 	Session         *session.BidirectionalSession
 	SftpClient      *sftp.Client
 	RemoteInfo      interpreter.BaseInfo
+	ProcessInfo     interpreter.ProcessInfo
 	targetSessionID int64
 	LatestDir       string
 }
@@ -31,6 +32,7 @@ func (s *server) newSftpConsoleWithInterpreter(ui *Console, opts SftpConsoleOpti
 	bSession := opts.Session
 	sftpClient := opts.SftpClient
 	remoteInfo := opts.RemoteInfo
+	processInfo := interpreter.SanitizeProcessInfo(opts.ProcessInfo)
 	targetSessionID := opts.targetSessionID
 	latestDir := opts.LatestDir
 
@@ -96,6 +98,7 @@ func (s *server) newSftpConsoleWithInterpreter(ui *Console, opts SftpConsoleOpti
 		remoteCwd:        &remoteCwd,
 		localInterpreter: s.serverInterpreter,
 		remoteInfo:       remoteInfo,
+		processInfo:      processInfo,
 		targetID:         targetSessionID,
 	}
 

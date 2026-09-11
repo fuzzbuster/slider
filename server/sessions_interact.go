@@ -49,10 +49,11 @@ func (s *server) interactWithLocalSession(
 		return fmt.Errorf("UI is not a Console")
 	}
 	s.newSftpConsoleWithInterpreter(console, SftpConsoleOptions{
-		Session:    sess,
-		SftpClient: sftpClient,
-		LatestDir:  unified.WorkingDir,
-		RemoteInfo: sess.GetPeerInfo(),
+		Session:     sess,
+		SftpClient:  sftpClient,
+		LatestDir:   unified.WorkingDir,
+		RemoteInfo:  sess.GetPeerInfo(),
+		ProcessInfo: sess.GetPeerProcessInfo(),
 	})
 	console.setConsoleAutoComplete(s.commandRegistry, s.serverInterpreter)
 	return nil
@@ -110,6 +111,7 @@ func (s *server) interactWithRemoteSession(
 		Session:         gatewaySession,
 		SftpClient:      sftpClient,
 		RemoteInfo:      remoteInfo,
+		ProcessInfo:     unified.ProcessInfo,
 		targetSessionID: unified.UnifiedID,
 		LatestDir:       unified.WorkingDir,
 	})

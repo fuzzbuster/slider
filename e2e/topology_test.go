@@ -166,6 +166,10 @@ func TestBeaconTopology(t *testing.T) {
 		marker := fmt.Sprintf("slider-e2e-beacon-%d", sessionID)
 		console.runSFTP(t, fmt.Sprintf("sessions --interactive %d", sessionID),
 			"Starting interactive session")
+		assertProcessDiagnostics(
+			t,
+			console.runSFTP(t, "sysinfo", "Process Name", "PID"),
+		)
 		console.runSFTP(t, "execute printf "+marker, marker)
 		console.run(t, "exit")
 	}
@@ -247,6 +251,10 @@ func TestGatewayTopology(t *testing.T) {
 	remoteID := remoteSessionIDFromOutput(t, output)
 	console.runSFTP(t, fmt.Sprintf("sessions --interactive %d", remoteID),
 		"Starting interactive session")
+	assertProcessDiagnostics(
+		t,
+		console.runSFTP(t, "sysinfo", "Process Name", "PID"),
+	)
 	console.runSFTP(t, "execute printf slider-e2e-gateway", "slider-e2e-gateway")
 	console.run(t, "exit")
 	console.run(t, fmt.Sprintf("sessions --kill %d", remoteID), "terminated gracefully")
@@ -321,6 +329,10 @@ func TestGatewayCallbackTopology(t *testing.T) {
 	remoteID := remoteSessionIDFromOutput(t, output)
 	console.runSFTP(t, fmt.Sprintf("sessions --interactive %d", remoteID),
 		"Starting interactive session")
+	assertProcessDiagnostics(
+		t,
+		console.runSFTP(t, "sysinfo", "Process Name", "PID"),
+	)
 	console.runSFTP(t, "execute printf slider-e2e-callback", "slider-e2e-callback")
 	console.run(t, "exit")
 	console.run(t, fmt.Sprintf("sessions --kill %d", remoteID), "terminated gracefully")

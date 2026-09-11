@@ -353,6 +353,21 @@ Running an interactive session provides its own sets of commands:
   !command          Execute "command" in local shell (non-interactive)
 ```
 
+`sysinfo` also reports the peer Process Name and PID. Process names are obtained
+from the native process interfaces on Linux, macOS and Windows; a failed lookup
+is displayed as `--` and never falls back to the binary path or command-line
+arguments.
+
+Process Name and PID are untrusted, sanitized diagnostics. They are not used for
+authentication, authorization, routing, session identity, logging or command
+construction. The optional metadata remains compatible with `slider-v2`; an old
+Client, Server or Gateway omits or drops it and `sysinfo` displays `--`.
+
+For complete multi-hop visibility, upgrade the Server/Gateway nodes that accept
+Clients first, then every Gateway from the edge toward the controlling Server,
+and finally upgrade Clients. Mixed-version chains remain functional and fail
+closed by omitting process diagnostics.
+
 A note on the interactive `shell` command:
 * If the Client host is running *nix OS or a Windows version with ConPTY (introduced in late 2018) the spawned Shell will be
   fully interactive if this is not supported by the target OS, the shell won't be executed to avoid uncertain behavior and 

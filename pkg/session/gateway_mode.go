@@ -39,6 +39,7 @@ func (s *BidirectionalSession) GetApplicationServer() ApplicationServer {
 
 // AddRemoteSession registers a remote session (Gateways only)
 func (s *BidirectionalSession) AddRemoteSession(key string, rs RemoteSession) {
+	rs.Process = sanitizeProcessInfoPointer(rs.Process)
 	s.remoteSessionsMutex.Lock()
 	defer s.remoteSessionsMutex.Unlock()
 
@@ -60,6 +61,7 @@ func (s *BidirectionalSession) GetRemoteSession(key string) (RemoteSession, bool
 	s.remoteSessionsMutex.RLock()
 	defer s.remoteSessionsMutex.RUnlock()
 	rs, exists := s.remoteSessions[key]
+	rs.Process = sanitizeProcessInfoPointer(rs.Process)
 	return rs, exists
 }
 
@@ -81,6 +83,7 @@ func (s *BidirectionalSession) GetRemoteSessionsSorted() []RemoteSession {
 
 	sessions := make([]RemoteSession, 0, len(s.remoteSessions))
 	for _, rs := range s.remoteSessions {
+		rs.Process = sanitizeProcessInfoPointer(rs.Process)
 		sessions = append(sessions, rs)
 	}
 
@@ -143,6 +146,9 @@ func (s *BidirectionalSession) GetRemoteSessions(visited []string) ([]RemoteSess
 	var sessions []RemoteSession
 	if err := json.Unmarshal(resPayload, &sessions); err != nil {
 		return nil, fmt.Errorf("failed to unmarshal sessions: %w", err)
+	}
+	for i := range sessions {
+		sessions[i].Process = sanitizeProcessInfoPointer(sessions[i].Process)
 	}
 
 	return sessions, nil

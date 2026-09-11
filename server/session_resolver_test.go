@@ -3,6 +3,7 @@ package server
 import (
 	"testing"
 
+	"slider/pkg/interpreter"
 	"slider/pkg/session"
 	"slider/pkg/slog"
 )
@@ -60,5 +61,50 @@ func TestRemoteStateKeyIncludesActualSessionID(t *testing.T) {
 	}
 	if first.stateKey(remoteStateSSH) == first.stateKey(remoteStatePortForward) {
 		t.Fatal("SSH endpoint and port-forward state keys must remain distinct")
+	}
+}
+
+func TestProcessInfoIsPreservedWithoutAffectingSessionKeys(t *testing.T) {
+	srv := &server{unifiedSessionIDs: make(map[SessionKey]int64)}
+	local := session.NewServerFromClientSession(
+		slog.NewLogger("process-info-test"),
+		nil,
+		nil,
+		nil,
+		nil,
+		"127.0.0.1",
+		nil,
+	)
+	defer func() { _ = local.Close() }()
+	local.SetPeerProcessInfo(interpreter.ProcessInfo{Name: "slider-client", PID: 111})
+
+	localUnified := srv.createUnifiedFromLocal(local)
+	if localUnified.ProcessInfo != local.GetPeerProcessInfo() {
+		t.Fatalf("local process info = %#v, want %#v",
+			localUnified.ProcessInfo, local.GetPeerProcessInfo())
+	}
+
+	entry := remoteSessionEntry{
+		gatewayID: 10,
+		rs: session.RemoteSession{
+			ID:      21,
+			Path:    []int64{11},
+			Process: &interpreter.ProcessInfo{Name: "bad\nname", PID: 222},
+		},
+	}
+	lookup := srv.buildRemoteLookup([]remoteSessionEntry{entry})
+	remoteUnified := srv.createUnifiedFromRemote(entry, lookup)
+	if remoteUnified.ProcessInfo.Name != "bad\uFFFDname" ||
+		remoteUnified.ProcessInfo.PID != 222 {
+		t.Fatalf("remote process info = %#v", remoteUnified.ProcessInfo)
+	}
+
+	changed := entry
+	changed.rs.Process = &interpreter.ProcessInfo{Name: "different", PID: 333}
+	changedLookup := srv.buildRemoteLookup([]remoteSessionEntry{changed})
+	key := newSessionKey(entry.gatewayID, entry.rs.Path, entry.rs.ID)
+	if lookup[key] != changedLookup[key] {
+		t.Fatalf("process info changed stable session ID from %d to %d",
+			lookup[key], changedLookup[key])
 	}
 }

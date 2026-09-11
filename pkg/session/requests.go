@@ -193,14 +193,19 @@ func (s *BidirectionalSession) handleClientInfo(req *ssh.Request) {
 	}
 
 	s.SetPeerInfo(ci.BaseInfo)
+	if ci.Process != nil {
+		s.SetPeerProcessInfo(*ci.Process)
+	}
 	if ci.Identity != "" {
 		s.SetPeerIdentity(ci.Identity)
 	}
 
 	if s.applicationServer != nil {
 		if serverInfo := s.applicationServer.GetServerInterpreter(); serverInfo != nil {
+			processInfo := serverInfo.ProcessInfo
 			replyInfo := &interpreter.Info{
 				BaseInfo: serverInfo.BaseInfo,
+				Process:  &processInfo,
 				Identity: s.applicationServer.GetServerIdentity(),
 			}
 			interpreterPayload, err := json.Marshal(replyInfo)

@@ -23,6 +23,7 @@ type SftpCommandContext struct {
 	remoteCwd        *string
 	localInterpreter *interpreter.Interpreter // Reference to local interpreter
 	remoteInfo       interpreter.BaseInfo     // Reference to remote interpreter info
+	processInfo      interpreter.ProcessInfo  // Untrusted diagnostics for sysinfo only
 	targetID         int64                    // The logical session ID (UnifiedID) for this context
 }
 

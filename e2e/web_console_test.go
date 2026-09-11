@@ -177,6 +177,10 @@ func TestWebConsoleAgentWorkflow(t *testing.T) {
 	udpEchoAddress := startUDPEchoServer(t)
 
 	sessionsOutput := console.run(t, "sessions", "Active sessions: 1")
+	if strings.Contains(sessionsOutput, "Process Name") ||
+		regexp.MustCompile(`(?m)^\s*PID\s+`).MatchString(cleanTerminal(sessionsOutput)) {
+		t.Fatalf("sessions exposed process diagnostics:\n%s", cleanTerminal(sessionsOutput))
+	}
 	sessionID := sessionIDFromOutput(t, sessionsOutput)
 	console.runSFTP(t, fmt.Sprintf("sessions -i %d", sessionID), "Starting interactive session")
 
@@ -191,7 +195,16 @@ func TestWebConsoleAgentWorkflow(t *testing.T) {
 		"sysinfo",
 		"execute",
 	)
-	console.runSFTP(t, "sysinfo", "System", "Architecture", "Working Directory")
+	sysinfo := console.runSFTP(
+		t,
+		"sysinfo",
+		"System",
+		"Architecture",
+		"Process Name",
+		"PID",
+		"Working Directory",
+	)
+	assertProcessDiagnostics(t, sysinfo)
 	console.runSFTP(t, "execute printf slider-e2e-remote-exec", "slider-e2e-remote-exec")
 	console.runSFTP(t, "pwd", stack.clientDir)
 	console.runSFTP(t, "getwd", stack.clientDir)
@@ -339,6 +352,18 @@ func TestWebConsoleAgentWorkflow(t *testing.T) {
 
 	console.run(t, "portfwd", "Active Port Forwards: 0")
 	console.run(t, fmt.Sprintf("sessions --kill %d", sessionID), "terminated gracefully")
+}
+
+func assertProcessDiagnostics(t *testing.T, output string) {
+	t.Helper()
+	cleaned := cleanTerminal(output)
+	if !regexp.MustCompile(`(?m)^\s*Process Name\s+\S`).MatchString(cleaned) ||
+		regexp.MustCompile(`(?m)^\s*Process Name\s+--\s*$`).MatchString(cleaned) {
+		t.Fatalf("sysinfo has no process name:\n%s", cleaned)
+	}
+	if !regexp.MustCompile(`(?m)^\s*PID\s+[1-9][0-9]*\s*$`).MatchString(cleaned) {
+		t.Fatalf("sysinfo has no positive PID:\n%s", cleaned)
+	}
 }
 
 func TestSessionDisconnect(t *testing.T) {

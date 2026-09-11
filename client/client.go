@@ -117,7 +117,11 @@ func (c *client) newSSHClient(sess *session.BidirectionalSession) {
 	c.Logger.DebugWith("SSH connection established",
 		slog.F("session_id", sess.GetID()))
 
-	clientInfo := &interpreter.Info{BaseInfo: c.interpreter.BaseInfo}
+	processInfo := c.interpreter.ProcessInfo
+	clientInfo := &interpreter.Info{
+		BaseInfo: c.interpreter.BaseInfo,
+		Process:  &processInfo,
+	}
 	go c.sendClientInfo(sess, clientInfo)
 
 	go sess.KeepAlive(c.keepalive)
@@ -235,6 +239,9 @@ func (c *client) sendClientInfo(sess *session.BidirectionalSession, ci *interpre
 				c.Logger.DebugWith("Server identification received",
 					slog.F("session_id", sess.GetID()),
 					slog.F("server_system", ciAnswer.System))
+			}
+			if ciAnswer.Process != nil {
+				sess.SetPeerProcessInfo(*ciAnswer.Process)
 			}
 		}
 	}
