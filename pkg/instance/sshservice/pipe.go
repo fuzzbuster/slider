@@ -75,23 +75,24 @@ func (s *Service) pipeChannelWithStatus(
 	var bytesToServer int64
 	var bytesToClient int64
 	var wg sync.WaitGroup
-	copyDone := make(chan struct{}, 2)
+	serverOutputDone := make(chan struct{}, 1)
 	wg.Add(2)
 
 	go func() {
 		defer wg.Done()
 		bytesToClient, _ = io.Copy(clientChannel, serverChannel)
-		copyDone <- struct{}{}
+		_ = clientChannel.CloseWrite()
+		serverOutputDone <- struct{}{}
 	}()
 	go func() {
 		defer wg.Done()
 		bytesToServer, _ = io.Copy(serverChannel, clientChannel)
-		copyDone <- struct{}{}
+		_ = serverChannel.CloseWrite()
 	}()
 
 	for {
 		select {
-		case <-copyDone:
+		case <-serverOutputDone:
 			_ = clientChannel.Close()
 			_ = serverChannel.Close()
 			wg.Wait()
