@@ -15,7 +15,7 @@
           "chapter_number": "5.2"
         },
         ".trae/deepwiki/功能模块：Shell、SFTP 与代理/SFTP 文件系统操作实现.md": {
-          "content_hash": "fa9bf24c0dfabe654188a20bee4474c3a279fbbe2fded18b79125e67caef013f",
+          "content_hash": "e1375b3ef3d68978373d50ae3a8d9423639bd91b5fbc6df6f9e27cf5aba262a2",
           "file_path": ".trae/deepwiki/功能模块：Shell、SFTP 与代理/SFTP 文件系统操作实现.md",
           "chapter_number": "8.3"
         },
@@ -30,7 +30,7 @@
           "chapter_number": "8.4"
         },
         ".trae/deepwiki/安全机制与身份验证.md": {
-          "content_hash": "bc17a07b2d9f4cbed47c784c5de52c2b5088ad4cdcfbc3fc8f55205f05cfef38",
+          "content_hash": "9d883a44f9c5274a73d04da1edfdc37e407b54f08feebf5c933ba13b04cd6d96",
           "file_path": ".trae/deepwiki/安全机制与身份验证.md",
           "chapter_number": "7"
         },
@@ -70,7 +70,7 @@
           "chapter_number": "5.4"
         },
         ".trae/deepwiki/核心模式与连接机制/传输层实现：SSH over WebSocket.md": {
-          "content_hash": "276b62bb7c4ed500d20e2dd5abab9e27cd8a10bdb7e110090727eaaab546160c",
+          "content_hash": "a0b7baeea5f8fb1f2c1e99aafc166e0253365feac1321418ce9c67c7edd0d164",
           "file_path": ".trae/deepwiki/核心模式与连接机制/传输层实现：SSH over WebSocket.md",
           "chapter_number": "3.1"
         },
@@ -84,13 +84,18 @@
           "file_path": ".trae/deepwiki/核心模式与连接机制/扩展拓扑：Gateway 与 Beacon 模式.md",
           "chapter_number": "3.4"
         },
+        ".trae/deepwiki/核心模式与连接机制/控制面与数据面隔离最佳实践.md": {
+          "content_hash": "dec47cdc599ed646f54c89426e7f5e3d3eeb31892c1b8f713ed2b45124bceba3",
+          "file_path": ".trae/deepwiki/核心模式与连接机制/控制面与数据面隔离最佳实践.md",
+          "chapter_number": "3.5"
+        },
         ".trae/deepwiki/项目概览与架构设计.md": {
           "content_hash": "649a1caa1b860db6bfd76692b703c95c80a06aa7e8391bb03a4fb06ffb39bdd9",
           "file_path": ".trae/deepwiki/项目概览与架构设计.md",
           "chapter_number": "1"
         },
         ".trae/deepwiki/核心模式与连接机制/监听器与连接路由机制.md": {
-          "content_hash": "f31afef58c432ba113a9caf008ec1876e2c99b9c370b8855ac205630dcb7506a",
+          "content_hash": "79baab3b22e53cd322a0caa2c1db4e53cb03685ef5484b9143b97ce3f08848be",
           "file_path": ".trae/deepwiki/核心模式与连接机制/监听器与连接路由机制.md",
           "chapter_number": "3.2"
         },
@@ -115,7 +120,7 @@
           "chapter_number": "6"
         },
         ".trae/deepwiki/核心模式与连接机制.md": {
-          "content_hash": "4b3ec923e31540162fe327d906f9f35257fd90f0d7fdd97f384704fc87c805d1",
+          "content_hash": "645d1fc0f2cde523364e556cc3b766386800cc7f39d11f5235e23c51c91838b9",
           "file_path": ".trae/deepwiki/核心模式与连接机制.md",
           "chapter_number": "3"
         },
@@ -139,7 +144,7 @@
       "chapter_number": "5.2"
     },
     ".trae/deepwiki/功能模块：Shell、SFTP 与代理/SFTP 文件系统操作实现.md": {
-      "content_hash": "fa9bf24c0dfabe654188a20bee4474c3a279fbbe2fded18b79125e67caef013f",
+      "content_hash": "e1375b3ef3d68978373d50ae3a8d9423639bd91b5fbc6df6f9e27cf5aba262a2",
       "file_path": ".trae/deepwiki/功能模块：Shell、SFTP 与代理/SFTP 文件系统操作实现.md",
       "chapter_number": "8.3"
     },
@@ -154,7 +159,7 @@
       "chapter_number": "8.4"
     },
     ".trae/deepwiki/安全机制与身份验证.md": {
-      "content_hash": "bc17a07b2d9f4cbed47c784c5de52c2b5088ad4cdcfbc3fc8f55205f05cfef38",
+      "content_hash": "9d883a44f9c5274a73d04da1edfdc37e407b54f08feebf5c933ba13b04cd6d96",
       "file_path": ".trae/deepwiki/安全机制与身份验证.md",
       "chapter_number": "7"
     },
@@ -194,7 +199,7 @@
       "chapter_number": "5.4"
     },
     ".trae/deepwiki/核心模式与连接机制/传输层实现：SSH over WebSocket.md": {
-      "content_hash": "276b62bb7c4ed500d20e2dd5abab9e27cd8a10bdb7e110090727eaaab546160c",
+      "content_hash": "a0b7baeea5f8fb1f2c1e99aafc166e0253365feac1321418ce9c67c7edd0d164",
       "file_path": ".trae/deepwiki/核心模式与连接机制/传输层实现：SSH over WebSocket.md",
       "chapter_number": "3.1"
     },
@@ -208,13 +213,18 @@
       "file_path": ".trae/deepwiki/核心模式与连接机制/扩展拓扑：Gateway 与 Beacon 模式.md",
       "chapter_number": "3.4"
     },
+    ".trae/deepwiki/核心模式与连接机制/控制面与数据面隔离最佳实践.md": {
+      "content_hash": "dec47cdc599ed646f54c89426e7f5e3d3eeb31892c1b8f713ed2b45124bceba3",
+      "file_path": ".trae/deepwiki/核心模式与连接机制/控制面与数据面隔离最佳实践.md",
+      "chapter_number": "3.5"
+    },
     ".trae/deepwiki/项目概览与架构设计.md": {
       "content_hash": "649a1caa1b860db6bfd76692b703c95c80a06aa7e8391bb03a4fb06ffb39bdd9",
       "file_path": ".trae/deepwiki/项目概览与架构设计.md",
       "chapter_number": "1"
     },
     ".trae/deepwiki/核心模式与连接机制/监听器与连接路由机制.md": {
-      "content_hash": "f31afef58c432ba113a9caf008ec1876e2c99b9c370b8855ac205630dcb7506a",
+      "content_hash": "79baab3b22e53cd322a0caa2c1db4e53cb03685ef5484b9143b97ce3f08848be",
       "file_path": ".trae/deepwiki/核心模式与连接机制/监听器与连接路由机制.md",
       "chapter_number": "3.2"
     },
@@ -239,7 +249,7 @@
       "chapter_number": "6"
     },
     ".trae/deepwiki/核心模式与连接机制.md": {
-      "content_hash": "4b3ec923e31540162fe327d906f9f35257fd90f0d7fdd97f384704fc87c805d1",
+      "content_hash": "645d1fc0f2cde523364e556cc3b766386800cc7f39d11f5235e23c51c91838b9",
       "file_path": ".trae/deepwiki/核心模式与连接机制.md",
       "chapter_number": "3"
     },
