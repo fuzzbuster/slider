@@ -4,6 +4,8 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"net/url"
+	"regexp"
+	"strings"
 	"testing"
 
 	"slider/pkg/conf"
@@ -117,5 +119,64 @@ func TestGatewayOperatorRequiresAuthentication(t *testing.T) {
 				t.Fatalf("routed = %v, want %v (status %d)", routed, tc.wantRouted, recorder.Code)
 			}
 		})
+	}
+}
+
+func TestWebFrontendRoutes(t *testing.T) {
+	s := &server{
+		Logger:        slog.NewLogger("web-frontend-test"),
+		httpConsoleOn: true,
+		urlRedirect:   &url.URL{},
+	}
+	handler := s.buildRouter()
+
+	pageRequest := httptest.NewRequest(http.MethodGet, listener.ConsolePath, nil)
+	pageRecorder := httptest.NewRecorder()
+	handler.ServeHTTP(pageRecorder, pageRequest)
+	if pageRecorder.Code != http.StatusOK {
+		t.Fatalf("console page returned %d", pageRecorder.Code)
+	}
+	if cacheControl := pageRecorder.Header().Get("Cache-Control"); cacheControl != "no-cache" {
+		t.Fatalf("console cache control = %q, want no-cache", cacheControl)
+	}
+
+	body := pageRecorder.Body.String()
+	if strings.Contains(body, "cdn.jsdelivr.net") {
+		t.Fatal("console page references the legacy CDN")
+	}
+	assetPath := regexp.MustCompile(`/console/assets/[^"]+\.js`).FindString(body)
+	if assetPath == "" {
+		t.Fatal("console page does not reference an embedded JavaScript asset")
+	}
+
+	assetRequest := httptest.NewRequest(http.MethodGet, assetPath, nil)
+	assetRecorder := httptest.NewRecorder()
+	handler.ServeHTTP(assetRecorder, assetRequest)
+	if assetRecorder.Code != http.StatusOK {
+		t.Fatalf("console asset returned %d", assetRecorder.Code)
+	}
+	if cacheControl := assetRecorder.Header().Get("Cache-Control"); cacheControl !=
+		"public, max-age=31536000, immutable" {
+		t.Fatalf("asset cache control = %q", cacheControl)
+	}
+	if contentType := assetRecorder.Header().Get("Content-Type"); !strings.Contains(contentType, "javascript") {
+		t.Fatalf("asset content type = %q, want JavaScript", contentType)
+	}
+
+	methodRequest := httptest.NewRequest(http.MethodPost, assetPath, nil)
+	methodRecorder := httptest.NewRecorder()
+	handler.ServeHTTP(methodRecorder, methodRequest)
+	if methodRecorder.Code != http.StatusMethodNotAllowed {
+		t.Fatalf("POST console asset returned %d, want 405", methodRecorder.Code)
+	}
+
+	disabled := (&server{
+		Logger:      slog.NewLogger("web-frontend-disabled-test"),
+		urlRedirect: &url.URL{},
+	}).buildRouter()
+	disabledRecorder := httptest.NewRecorder()
+	disabled.ServeHTTP(disabledRecorder, assetRequest)
+	if disabledRecorder.Code != http.StatusNotFound {
+		t.Fatalf("disabled console asset returned %d, want 404", disabledRecorder.Code)
 	}
 }

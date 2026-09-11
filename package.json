@@ -1,14 +1,23 @@
 {
-  "name": "slider-e2e",
+  "name": "slider-web",
   "private": true,
   "type": "module",
   "scripts": {
-    "test:e2e:web": "playwright test",
+    "build:web": "vite build",
+    "typecheck:web": "tsc --project web/tsconfig.json --noEmit",
+    "check:web": "npm run typecheck:web && npm run build:web",
+    "test:e2e:web": "npm run build:web && playwright test",
     "test:e2e:web:report": "playwright show-report"
   },
+  "dependencies": {
+    "@xterm/addon-fit": "0.11.0",
+    "@xterm/xterm": "6.0.0",
+    "lucide": "1.44.0"
+  },
   "devDependencies": {
+    "@types/node": "22.20.2",
     "@playwright/test": "1.63.0",
-    "xterm": "5.3.0",
-    "xterm-addon-fit": "0.8.0"
+    "typescript": "7.0.2",
+    "vite": "8.3.0"
   }
 }

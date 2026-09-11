@@ -24,6 +24,7 @@ func (s *server) buildRouter() http.Handler {
 	})
 
 	if s.httpConsoleOn {
+		mux.HandleFunc(listener.ConsoleAssetsPath, s.handleConsoleAsset)
 		if s.authOn {
 			mux.HandleFunc(listener.AuthPath, s.handleAuthPage)
 			mux.HandleFunc(listener.AuthChallengePath, s.handleAuthChallenge)

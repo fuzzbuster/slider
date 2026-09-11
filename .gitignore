@@ -1,6 +1,8 @@
 .idea
 .vscode
 dist
+!server/web/dist/
+!server/web/dist/**
 build
 artifacts
 server/cmd/build

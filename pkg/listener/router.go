@@ -13,6 +13,7 @@ const (
 	AuthLoginPath     = AuthPath + "/token"
 	AuthLogoutPath    = AuthPath + "/logout"
 	ConsolePath       = "/console"
+	ConsoleAssetsPath = ConsolePath + "/assets/"
 	ConsoleWsPath     = ConsolePath + "/ws"
 )
 

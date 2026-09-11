@@ -1,0 +1,66 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <meta name="color-scheme" content="dark light" />
+    <title>Slider Console</title>
+    <script type="module" crossorigin src="/console/assets/console-DLVH7ae-.js"></script>
+    <link rel="modulepreload" crossorigin href="/console/assets/theme-CM5bcWQG.js">
+    <link rel="stylesheet" crossorigin href="/console/assets/theme-DSzoMD7x.css">
+    <link rel="stylesheet" crossorigin href="/console/assets/console-PXxEsLjA.css">
+  </head>
+  <body
+    data-auth-on="{{.AuthOn}}"
+    data-auth-path="{{.AuthPath}}"
+    data-auth-logout-path="{{.AuthLogoutPath}}"
+    data-console-ws-path="{{.ConsoleWsPath}}"
+  >
+    <main class="console-shell">
+      <header class="console-toolbar">
+        <div class="console-identity">
+          <div class="console-title">
+            <span class="brand-mark" aria-hidden="true">S</span>
+            <h1>Slider Console</h1>
+          </div>
+          <div id="status" class="status connecting" role="status" aria-live="polite">
+            <span class="status-indicator" aria-hidden="true"></span>
+            <span data-status-text>Connecting...</span>
+          </div>
+        </div>
+
+        <div class="console-actions">
+          <button
+            class="logout-button"
+            id="logoutBtn"
+            type="button"
+            title="Log out"
+            hidden
+          >
+            <i data-lucide="log-out" aria-hidden="true"></i>
+            <span class="logout-label">Logout</span>
+          </button>
+          <button
+            class="icon-button"
+            id="themeToggle"
+            type="button"
+            aria-label="Use light theme"
+            title="Use light theme"
+          >
+            <span data-theme-icon="light">
+              <i data-lucide="sun"></i>
+            </span>
+            <span data-theme-icon="dark">
+              <i data-lucide="moon"></i>
+            </span>
+          </button>
+        </div>
+      </header>
+
+      <section class="terminal-frame" aria-label="Slider terminal">
+        <div id="terminal"></div>
+      </section>
+    </main>
+
+  </body>
+</html>

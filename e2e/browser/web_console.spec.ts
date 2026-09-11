@@ -9,20 +9,6 @@ import { fileURLToPath } from 'node:url';
 
 const execFileAsync = promisify(execFile);
 const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '../..');
-const xtermAssets = new Map([
-  [
-    'https://cdn.jsdelivr.net/npm/xterm@5.3.0/css/xterm.css',
-    path.join(root, 'node_modules/xterm/css/xterm.css'),
-  ],
-  [
-    'https://cdn.jsdelivr.net/npm/xterm@5.3.0/lib/xterm.js',
-    path.join(root, 'node_modules/xterm/lib/xterm.js'),
-  ],
-  [
-    'https://cdn.jsdelivr.net/npm/xterm-addon-fit@0.8.0/lib/xterm-addon-fit.js',
-    path.join(root, 'node_modules/xterm-addon-fit/lib/xterm-addon-fit.js'),
-  ],
-]);
 
 interface RunningServer {
   baseURL: string;
@@ -53,8 +39,9 @@ test.afterAll(async () => {
 
 test('controls the console on desktop and mobile viewports', async ({ page }) => {
   const server = await startServer();
+  const diagnostics = observePage(page, server.baseURL);
+  const terminalOutput = observeTerminalOutput(page);
   try {
-    await routeTerminalAssets(page);
     await page.goto(`${server.baseURL}/console`);
 
     await expect(page.locator('#status')).toHaveText('Connected to Slider console');
@@ -73,7 +60,7 @@ test('controls the console on desktop and mobile viewports', async ({ page }) =>
       'socks',
       'ssh',
     ]) {
-      await expect.poll(() => terminalText(page)).toContain(command);
+      await expect.poll(terminalOutput).toContain(command);
     }
 
     for (const [command, expected] of [
@@ -87,7 +74,7 @@ test('controls the console on desktop and mobile viewports', async ({ page }) =>
       ['definitely-not-a-command', 'unknown command'],
     ]) {
       await sendTerminalCommand(page, command);
-      await expect.poll(() => terminalText(page)).toContain(expected);
+      await expect.poll(terminalOutput).toContain(expected);
     }
 
     const initialTheme = await page.locator('body').getAttribute('data-theme');
@@ -100,10 +87,21 @@ test('controls the console on desktop and mobile viewports', async ({ page }) =>
     const layout = await page.evaluate(() => ({
       documentWidth: document.documentElement.scrollWidth,
       viewportWidth: window.innerWidth,
+      viewportHeight: window.innerHeight,
       terminalWidth: document.querySelector('#terminal')?.getBoundingClientRect().width ?? 0,
+      terminalHeight: document.querySelector('#terminal')?.getBoundingClientRect().height ?? 0,
+      terminalBottom: document.querySelector('#terminal')?.getBoundingClientRect().bottom ?? 0,
+      toolbarBottom: document.querySelector('.console-toolbar')?.getBoundingClientRect().bottom ?? 0,
+      terminalTop: document.querySelector('#terminal')?.getBoundingClientRect().top ?? 0,
     }));
     expect(layout.documentWidth).toBeLessThanOrEqual(layout.viewportWidth);
     expect(layout.terminalWidth).toBeGreaterThan(0);
+    expect(layout.terminalHeight).toBeGreaterThan(layout.viewportHeight * 0.6);
+    expect(layout.terminalBottom).toBeLessThanOrEqual(layout.viewportHeight);
+    expect(layout.toolbarBottom).toBeLessThanOrEqual(layout.terminalTop);
+    expect(diagnostics.externalRequests).toEqual([]);
+    expect(diagnostics.pageErrors).toEqual([]);
+    expect(diagnostics.consoleErrors).toEqual([]);
 
     await expect(page.locator('#status')).toHaveText('Connected to Slider console');
     await sendTerminalCommand(page, 'bg');
@@ -150,8 +148,9 @@ test('authenticates, exposes cert commands, and logs out', async ({ page }) => {
     '--listener-key',
     keyPath,
   ], directory, 'https');
+  const diagnostics = observePage(page, server.baseURL);
+  const terminalOutput = observeTerminalOutput(page);
   try {
-    await routeTerminalAssets(page);
     await page.goto(`${server.baseURL}/console`);
     await expect(page).toHaveURL(/\/auth$/);
 
@@ -159,6 +158,7 @@ test('authenticates, exposes cert commands, and logs out', async ({ page }) => {
     await page.locator('#privateKey').fill('invalid');
     await page.locator('#submitBtn').click();
     await expect(page.locator('#error')).toContainText('Certificate fingerprint not found');
+    diagnostics.consoleErrors = diagnostics.consoleErrors.filter((message) => !message.includes('401'));
 
     const certJar = JSON.parse(await readFile(certJarPath, 'utf8')) as Record<string, KeyPair>;
     await page.locator('#fingerprint').fill(certJar['1'].FingerPrint);
@@ -168,21 +168,60 @@ test('authenticates, exposes cert commands, and logs out', async ({ page }) => {
     await expect(page).toHaveURL(/\/console$/);
     await expect(page.locator('#status')).toHaveText('Connected to Slider console');
     await sendTerminalCommand(page, 'help');
-    await expect.poll(() => terminalText(page)).toContain('certs');
+    await expect.poll(terminalOutput).toContain('certs');
 
     await page.locator('#logoutBtn').click();
     await expect(page).toHaveURL(/\/auth$/);
+    expect(diagnostics.externalRequests).toEqual([]);
+    expect(diagnostics.pageErrors).toEqual([]);
+    expect(diagnostics.consoleErrors).toEqual([]);
   } finally {
     await stopServer(server);
   }
 });
 
-async function routeTerminalAssets(page: Page): Promise<void> {
-  for (const [url, assetPath] of xtermAssets) {
-    await page.route(url, async (route) => {
-      await route.fulfill({ path: assetPath });
+interface PageDiagnostics {
+  consoleErrors: string[];
+  externalRequests: string[];
+  pageErrors: string[];
+}
+
+function observePage(page: Page, baseURL: string): PageDiagnostics {
+  const diagnostics: PageDiagnostics = {
+    consoleErrors: [],
+    externalRequests: [],
+    pageErrors: [],
+  };
+  const expectedOrigin = new URL(baseURL).origin;
+
+  page.on('request', (request) => {
+    const url = new URL(request.url());
+    if ((url.protocol === 'http:' || url.protocol === 'https:') && url.origin !== expectedOrigin) {
+      diagnostics.externalRequests.push(request.url());
+    }
+  });
+  page.on('pageerror', (error) => {
+    diagnostics.pageErrors.push(error.message);
+  });
+  page.on('console', (message) => {
+    if (message.type() === 'error') {
+      diagnostics.consoleErrors.push(message.text());
+    }
+  });
+
+  return diagnostics;
+}
+
+function observeTerminalOutput(page: Page): () => string {
+  let output = '';
+  page.on('websocket', (socket) => {
+    socket.on('framereceived', (event) => {
+      output += typeof event.payload === 'string'
+        ? event.payload
+        : event.payload.toString('utf8');
     });
-  }
+  });
+  return () => output;
 }
 
 async function sendTerminalCommand(page: Page, command: string): Promise<void> {
@@ -190,17 +229,6 @@ async function sendTerminalCommand(page: Page, command: string): Promise<void> {
   await input.focus();
   await page.keyboard.type(command);
   await page.keyboard.press('Enter');
-}
-
-async function terminalText(page: Page): Promise<string> {
-  return page.evaluate(() => {
-    const terminal = eval('term');
-    const lines: string[] = [];
-    for (let index = 0; index < terminal.buffer.active.length; index += 1) {
-      lines.push(terminal.buffer.active.getLine(index)?.translateToString(true) ?? '');
-    }
-    return lines.join('\n');
-  });
 }
 
 async function startServer(

@@ -179,6 +179,22 @@ jobs:
       - name: Install browser test dependencies
         run: npm ci
 
+      - name: Type-check frontend
+        run: npm run typecheck:web
+
+      - name: Build frontend
+        run: npm run build:web
+
+      - name: Verify committed frontend assets
+        shell: bash
+        run: |
+          if ! git diff --quiet -- server/web/dist || \
+            [[ -n "$(git ls-files --others --exclude-standard -- server/web/dist)" ]]; then
+            git status --short -- server/web/dist
+            git diff -- server/web/dist
+            exit 1
+          fi
+
       - name: Install Chromium
         run: npx playwright install --with-deps chromium
 

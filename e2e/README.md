@@ -13,9 +13,9 @@ directories, and run real Server, Client, Gateway and Beacon processes.
 | Browser E2E | `make test-e2e-web` | Desktop/mobile Web Console and authentication UI | under 1 minute |
 | Extended E2E | `make test-e2e-extended` | Interactive Vim and 1 GiB upload/download | under 15 minutes |
 
-The browser suite uses local copies of the exact xterm.js assets referenced by
-the product template. This removes CDN availability from the test result while
-still exercising the unmodified page in Chromium.
+The browser suite builds the frontend and exercises the assets embedded in the
+Slider binary. It fails if the application requests resources from an external
+origin.
 
 ## Functional coverage
 
@@ -59,7 +59,7 @@ Windows on the architectures built by the release pipeline.
 - Readiness is based on protocol output, never fixed startup sleeps.
 - Every network operation has a deadline.
 - Test processes are interrupted and then force-killed during cleanup.
-- Browser CDN requests are fulfilled from pinned local packages.
+- Browser requests are restricted to the Slider server origin.
 - Tests do not retry internally. CI retries the browser suite once and keeps a
   Playwright trace for the retry.
 - Large and interactive scenarios are separate from the PR-critical path.

@@ -50,6 +50,18 @@ make <TARGET> UPX_BRUTE=yes
 Makefiles for building [Server](server/cmd) or [Client](client/cmd) only, are also included just in case it fits best your purpose. 
 The combined Slider Server/Client binary is the recommended way to go. For those binaries that allow UPX packing, the final size of a standalone binary is practically identical to the combined binary.
 
+The Web Console source is built with Node.js 22, Vite and TypeScript. Its
+production assets are committed and embedded in the Go binary, so a normal Go
+build does not require Node.js and the shipped console does not load resources
+from a CDN. After changing files under `web/`, rebuild and verify the assets:
+
+```
+npm ci
+make web-typecheck
+make web-build
+make web-check
+```
+
 ## Server
 
 ```
@@ -191,7 +203,7 @@ A redirect parameter must be at least a URL with a valid scheme and host (`http[
 HTTP connections to the root path `/` will be redirected to the given URL, while the rest of the connections will proceed as usual.
 
 ##### `--http-console`:
-Disabled by default. If enabled, it will serve the Slider Server Console at `/console` using xterm.js which connects to the Websocket Console. 
+Disabled by default. If enabled, it will serve the Slider Server Console at `/console` using the bundled xterm.js frontend, which connects to the Websocket Console without loading third-party runtime resources.
 If `--auth` is enabled then authentication will be required to access the Websocket Console. 
 In order to avoid sending credentials in plain text, enabling authentication also requires the server using TLS, otherwise it will refuse to start.
 If `--http-template` and `--http-redirect` are not provided, then the root path will redirect you to the authentication page (if `auth` is enabled) or directly to the console (if `auth` is disabled).
