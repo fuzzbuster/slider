@@ -29,12 +29,12 @@
 Slider 的服务端模块（位于 `server/` 目录）是整个系统的核心协调者。它不仅负责管理所有接入的客户端连接（Beacons 和 Operators），还提供了一个功能丰富的 Web 管理控制台，允许用户通过浏览器直接控制远程系统。
 
 在本次代码库探索中，我们发现了以下关键信息：
-- **文件总数**：共计 42 个 Go 源文件，涵盖了从核心调度到具体命令实现的各个方面。
+- **文件总数**：服务端目录包含 50 余个 Go 源文件，核心调度、命令实现、Web Console、会话解析和代理状态已经拆分到更细粒度的文件中。
 - **子模块分布**：
   - `cmd/`：包含服务端的启动入口和 Makefile。
-  - `templates/`：包含 Web 控制台所需的 HTML 模板（`auth.html`, `console.html`）。
-  - **核心逻辑**：`server.go`, `gateway.go`, `handler.go` 等文件定义了服务端的骨架。
-  - **命令系统**：大量以 `commands_*.go` 命名的文件实现了具体的管理功能，如会话管理、SOCKS 代理、SFTP 操作等。
+  - `web/` 与 `server/web/dist`：前端源码由 Vite/TypeScript 构建，构建产物通过 `go:embed` 嵌入服务端。
+  - **核心逻辑**：`server.go`, `bootstrap.go`, `runtime.go`, `gateway.go`, `handler.go` 等文件定义服务端骨架、启动和 HTTP/SSH 生命周期。
+  - **命令系统**：`commands_*.go` 保留命令入口，复杂逻辑进一步拆到 `sessions_*`, `shell_*`, `socks_*`, `console_*` 等专责文件。
   - **认证系统**：`handler_auth.go` 和 `middleware_auth.go` 负责系统的安全性。
 
 本章节将深入探讨这些组件的内部实现，解释 Slider 如何在复杂的网络环境下维持稳定的连接并提供流畅的交互体验。
@@ -65,7 +65,7 @@ type server struct {
 }
 ```
 
-`server` 实例在启动时会初始化这些组件。特别值得注意的是 `commandRegistry`，它在服务端启动时完成所有内置命令的注册，确保控制台在用户接入时即可使用。
+`server` 实例由 `newConfiguredServer` 组装，启动流程再由 `RunServer` 调用 `startHTTPListener`、`startStartupCallback` 和 `runUntilShutdown` 串联。特别值得注意的是 `commandRegistry`，它在服务端启动时完成所有内置命令的注册，确保本地控制台和 Web 控制台使用同一套命令实现。
 
 ### 会话管理与追踪
 
@@ -120,10 +120,11 @@ graph TB
 
 ### 模板渲染与静态资源管理
 
-Slider 使用 Go 内置的 `html/template` 包进行页面渲染。为了简化部署，所有的 HTML 模板都通过 `embed` 机制嵌入到二进制文件中。
+Slider 使用 Go 内置的 `html/template` 包渲染页面，但页面源码已经迁移到 `web/`，由 Vite/TypeScript 构建后输出到 `server/web/dist`。为了简化部署，`handler_pages.go` 使用 `//go:embed web/dist` 将构建产物嵌入到二进制文件中。
 
-- `auth.html`：负责用户登录和证书指纹输入。
-- `console.html`：承载 Xterm.js 终端容器，是用户操作的主战场。
+- `web/auth.html` 与 `web/src/auth.ts`：负责用户登录、challenge 获取和 Ed25519 私钥签名。
+- `web/console.html` 与 `web/src/console.ts`：承载 `@xterm/xterm` 终端容器、WebSocket 连接和 resize 控制消息。
+- `server/web/dist`：提交到仓库的构建产物，Go 端直接嵌入并服务 `/console` 下的静态 assets。
 
 `handler_pages.go` 中的 `handleConsolePage` 函数会注入必要的配置信息（如 WebSocket 路径、认证状态等）到模板中，确保前端能正确连接到后端。
 
@@ -136,9 +137,10 @@ WebSocket 在这里充当了透明的传输管道。服务端开启了两个并�
 这种桥接方式使得前端的 Xterm.js 能够像操作本地 Shell 一样操作 Slider 的命令环境。此外，系统还支持特殊的 JSON 消息来处理终端窗口大小的调整（Resize），确保远程输出在不同尺寸的屏幕上都能正确对齐。
 
 **Section sources**:
-- [server/handler.go](server/handler.go)
+- [server/handler_console_ws.go](server/handler_console_ws.go)
 - [server/handler_pages.go](server/handler_pages.go)
 - [server/console.go](server/console.go)
+- [web/src/console.ts](web/src/console.ts)
 
 ---
 
@@ -173,13 +175,16 @@ type Command interface {
 
 ### 核心命令实现分析
 
-- **`sessions` 命令**：这是最复杂的命令之一。它不仅列出本地会话，还会递归地查询网关会话下的远程连接，构建一个统一的会话树。它通过 `ResolveUnifiedSessions` 方法将复杂的拓扑结构简化为用户可理解的列表。
-- **`shell` 命令**：负责在指定的会话上开启交互式 Shell。它会请求 SSH 渠道的 `shell` 类型，并进行双向流拷贝。
+- **`sessions` 命令**：这是最复杂的命令之一。`commands_sessions.go` 负责参数解析，`sessions_list.go` 输出统一会话表，`sessions_interact.go` 进入本地或远程 SFTP 交互，`session_resolver.go` 负责稳定的 `UnifiedID` 分配和跨 Gateway 远程会话归一化。
+- **`shell` 命令**：负责在指定的会话上开启交互式 Shell。`commands_shell.go` 负责命令入口，`shell_local.go`、`shell_remote.go` 和 `shell_interactive.go` 分别处理本地会话、远程会话和 mTLS 交互式桥接。
 - **`sftp` 命令**：Slider 内置了 SFTP 客户端支持。`sessions -i <ID>` 会进入一个专门的 SFTP 交互环境，允许用户像在本地文件系统中一样浏览远程文件。
 
 **Section sources**:
 - [server/command.go](server/command.go)
 - [server/commands_sessions.go](server/commands_sessions.go)
+- [server/session_resolver.go](server/session_resolver.go)
+- [server/sessions_list.go](server/sessions_list.go)
+- [server/sessions_interact.go](server/sessions_interact.go)
 - [server/commands_basic.go](server/commands_basic.go)
 
 ---
@@ -199,11 +204,8 @@ sequenceDiagram
     participant JWT as JWT Provider
     participant Console as Console Page
 
-    User->>Auth: 请求一次性挑战 (POST /auth/challenge)
-    Auth-->>User: 返回 challenge_id 与随机 challenge
-    User->>User: 使用授权证书私钥签名
-    User->>Auth: 提交指纹、challenge_id 与签名 (POST /auth/token)
-    Auth->>Auth: 验证指纹、挑战有效期和 Ed25519 签名
+    User->>Auth: 提交证书指纹 (POST /auth/token)
+    Auth->>Auth: 验证指纹是否在允许列表
     Auth->>JWT: 生成 Claims (Subject=指纹, CertID)
     JWT-->>Auth: 返回签名后的令牌
     Auth-->>User: 设置 HttpOnly Cookie 并返回 JSON
@@ -215,7 +217,7 @@ sequenceDiagram
 
 ### 证书指纹验证与令牌颁发
 
-服务端只接受证书库（`certTrack`）中的客户端证书。指纹仅用于定位公钥，客户端还必须对一次性 challenge 进行 Ed25519 签名，以证明其持有对应私钥。challenge 使用后立即失效，原始指纹不能作为 Token 使用。
+在 `handleAuthToken` 中，服务端会检查用户提供的指纹。如果指纹与服务端证书匹配，或者存在于已导入的客户端证书库（`certTrack`）中，则认为身份合法。
 
 令牌的签名密钥是动态生成的，通常派生自服务端的 CA 私钥，这保证了即使服务端重启，只要密钥材料不变，之前的令牌依然有效（在有效期内）。
 
@@ -281,6 +283,7 @@ sequenceDiagram
 
 **Section sources**:
 - [server/handler.go](server/handler.go)
+- [server/handler_console_ws.go](server/handler_console_ws.go)
 - [server/server.go](server/server.go)
 - [server/command.go](server/command.go)
 
@@ -295,7 +298,7 @@ sequenceDiagram
 | `server` | `struct` | 服务端主对象，管理配置、会话和生命周期。 |
 | `CommandRegistry` | `struct` | 命令注册表，负责命令的存储、查找和自动补全建议。 |
 | `ExecutionContext` | `struct` | 命令执行时的环境上下文，连接了服务端、会话和 UI。 |
-| `BidirectionalSession` | `interface` | 会话抽象，统一了 WebSocket 和原始 TCP 连接的操作接口。 |
+| `BidirectionalSession` | `struct` | 会话对象，统一承载 WebSocket/原始连接、SSH client/server、角色、对端信息和 endpoint 实例。 |
 | `UserInterface` | `interface` | UI 抽象接口，定义了向用户输出信息的标准方法。 |
 | `Console` | `struct` | `UserInterface` 的具体实现，封装了终端读写和历史记录。 |
 
@@ -305,9 +308,12 @@ sequenceDiagram
 
 以下是本章节涉及的关键源文件：
 
-- `server/server.go`: 服务端核心逻辑与 SSH 生命周期管理。
+- `server/server.go`: 服务端核心结构与 SSH 生命周期管理。
+- `server/bootstrap.go`: 服务端配置、解释器、证书和命令注册表初始化。
+- `server/runtime.go`: HTTP/HTTPS 监听器启动、Callback 启动和控制台阻塞循环。
 - `server/gateway.go`: 网关模式下的 SSH 客户端实现。
-- `server/handler.go`: HTTP 路由分发与 WebSocket 升级处理。
+- `server/handler.go`: HTTP 路由分发与 Agent/Gateway WebSocket 升级处理。
+- `server/handler_console_ws.go`: Web 控制台 WebSocket 与 PTY 桥接。
 - `server/console.go`: Web 控制台后端逻辑与 PTY 桥接。
 - `server/ui.go`: 用户界面接口定义。
 - `server/command.go`: 命令系统框架与注册机制。
@@ -315,5 +321,7 @@ sequenceDiagram
 - `server/handler_pages.go`: HTML 模板渲染与页面逻辑。
 - `server/middleware_auth.go`: 认证中间件，保护敏感路由。
 - `server/commands_sessions.go`: 会话管理命令实现。
+- `server/session_resolver.go`: 本地/远程会话归一化和稳定 UnifiedID 分配。
 - `server/commands_basic.go`: 基础控制命令（help, exit, bg）。
-- `server/templates/`: 包含 `auth.html` 和 `console.html` 模板文件。
+- `web/`: Vite/TypeScript 前端源码。
+- `server/web/dist`: 嵌入到服务端二进制中的前端构建产物。

@@ -22,13 +22,13 @@
 
 Slider 的 Web 控制台模块负责为用户提供一个基于浏览器的交互式管理界面。该模块集成了实时终端模拟、身份认证、文件管理（SFTP）以及系统状态监控等功能，使得管理员可以通过 Web 浏览器远程控制 Slider 服务端及其连接的 Agent。
 
-根据对 `server/` 目录的扫描，该模块涉及约 44 个源文件，核心逻辑分布在以下子模块中：
+根据对当前代码的扫描，该模块涉及服务端 Go 代码、前端 TypeScript 源码以及构建后的嵌入式静态资源，核心逻辑分布在以下子模块中：
 
 - **核心逻辑 (`server/console.go`, `server/console_out.go`)**: 处理控制台的生命周期、命令解析与输出格式化。
-- **Web 路由与 UI (`server/ui.go`, `server/handler_pages.go`)**: 负责 HTML 模板的加载、渲染以及静态资源的嵌入。
-- **实时通信 (`server/handler.go`)**: 实现 WebSocket 升级逻辑以及与 PTY 的双向桥接。
+- **Web 路由与 UI (`server/handler_pages.go`)**: 负责从 `server/web/dist` 加载嵌入式页面和静态资源。
+- **实时通信 (`server/handler_console_ws.go`)**: 实现浏览器控制台 WebSocket 升级逻辑以及与 PTY 的双向桥接。
 - **文件管理 (`server/console_sftp.go`)**: 将 SFTP 功能映射到 Web 控制台的交互式会话中。
-- **前端模板 (`server/templates/`)**: 包含 `console.html` 和 `auth.html`，使用 `xterm.js` 提供终端体验。
+- **前端源码 (`web/`)**: 使用 Vite + TypeScript 构建 `auth.html`、`console.html`、`web/src/console.ts` 和 `web/src/auth.ts`，并输出到 `server/web/dist` 供 Go 端嵌入。
 
 本章节将深入探讨这些组件如何协作，构建出一个高性能、低延迟的 Web 管理界面。
 
@@ -40,7 +40,7 @@ Slider 的 Web 控制台采用了典型的“前端终端模拟器 + 后端 PTY 
 
 Web 控制台的核心在于如何将浏览器的 WebSocket 连接与服务端的伪终端（PTY）进行对接。
 
-1.  **连接升级**: 当用户访问 `/console` 时，浏览器发起 WebSocket 升级请求。服务端在 `handleWebSocketConsole` 中验证 JWT Token 后，完成协议升级。
+1.  **连接升级**: 浏览器加载 `/console` 后，由前端连接 `/console/ws`。服务端在 `handleWebSocketConsole` 中验证 JWT Token 后，完成 WebSocket 升级。
 2.  **PTY 创建**: 后端使用 `github.com/creack/pty` 创建一对 PTY 设备（Master/TTY）。
 3.  **双向桥接**:
     - **输入流**: 启动一个协程监听 WebSocket 的 `ReadMessage`，将接收到的用户按键数据直接写入 PTY Master。
@@ -74,8 +74,9 @@ graph TB
 该架构确保了前端操作与后端执行的解耦。`xterm.js` 仅负责渲染 ANSI 流，而复杂的命令逻辑和状态维护由后端的 `Console` 实例处理。
 
 **Diagram sources**:
-- [server/handler.go:L358-L563](server/handler.go#L358-L563)
-- [server/console.go:L23-L30](server/console.go#L23-L30)
+- [server/handler_console_ws.go](server/handler_console_ws.go)
+- [server/handler_pages.go](server/handler_pages.go)
+- [server/console.go](server/console.go)
 
 ### 实时交互协议
 
@@ -94,20 +95,21 @@ graph TB
 后端在接收到 `resize` 消息后，会调用 `pty.Setsize` 更新 PTY 的窗口大小，并通知 `Console` 实例更新其内部的 `term.Terminal` 尺寸。
 
 **Section sources**:
-- [server/handler.go](server/handler.go)
+- [server/handler_console_ws.go](server/handler_console_ws.go)
 - [server/console.go](server/console.go)
 
 ## UI 渲染与静态资源管理
 
-Slider 使用 Go 语言内置的 `html/template` 包进行页面渲染，并通过 `embed` 机制将所有 HTML 模板嵌入到二进制文件中，实现了“单文件部署”的便利性。
+Slider 的前端界面由 Vite 和 TypeScript 构建。源码位于 `web/`，构建结果输出到 `server/web/dist`，再由 `server/handler_pages.go` 通过 `go:embed` 嵌入到二进制文件中，实现“单文件部署”的便利性。
 
 ### 模板渲染流程
 
 UI 的渲染由 `handler_pages.go` 中的处理器负责。
 
-1.  **资源嵌入**: 使用 `//go:embed templates/*.html` 将模板文件打包进程序。
-2.  **数据绑定**: `consolePageData` 结构体包含了前端所需的配置信息，如 WebSocket 路径、认证开关、登出路径等。
-3.  **执行渲染**: `handleConsolePage` 处理器在用户访问时，将动态数据注入模板并输出 HTML。
+1.  **前端构建**: `npm run build:web` 调用 Vite，将 `web/auth.html`、`web/console.html` 和 `web/src/*.ts` 打包到 `server/web/dist`。
+2.  **资源嵌入**: `server/handler_pages.go` 使用 `//go:embed web/dist` 将构建产物打包进 Go 二进制。
+3.  **数据绑定**: `consolePageData` 结构体包含前端所需的配置信息，如 WebSocket 路径、认证开关、登录和登出路径。
+4.  **执行渲染**: `handleConsolePage` 与 `handleAuthPage` 将动态数据注入 `console.html` 和 `auth.html`；`handleConsoleAsset` 负责带长期缓存头的静态资源响应。
 
 ```mermaid
 sequenceDiagram
@@ -130,16 +132,19 @@ sequenceDiagram
 
 ### 前端终端实现
 
-`server/templates/console.html` 是 Web 控制台的核心前端页面。它引入了 `xterm.js` 库，并配置了 `FitAddon` 以自动适应容器大小。
+`web/console.html` 和 `web/src/console.ts` 是 Web 控制台的核心前端实现。代码使用 `@xterm/xterm` 与 `@xterm/addon-fit`，构建后由 Vite 写入 `server/web/dist/console.html` 和对应的 assets。
 
-- **初始化**: 页面加载后，通过 `new Terminal()` 创建终端实例。
+- **初始化**: 页面加载后，通过 `new Terminal()` 创建终端实例，并加载 `FitAddon` 适应容器尺寸。
 - **事件处理**:
     - `term.onData`: 捕获用户输入并通过 WebSocket 发送。
     - `ws.onmessage`: 接收后端输出并调用 `term.write()` 渲染。
-- **主题支持**: 页面内置了深色/浅色主题切换逻辑，并同步调整 `xterm.js` 的颜色配置，以保持视觉统一。
+- **主题支持**: `web/src/theme.ts` 管理主题初始化和切换，终端颜色配置在 `web/src/console.ts` 中显式定义。
 
 **Section sources**:
-- [server/templates/console.html](server/templates/console.html)
+- [web/console.html](web/console.html)
+- [web/src/console.ts](web/src/console.ts)
+- [web/src/auth.ts](web/src/auth.ts)
+- [web/src/theme.ts](web/src/theme.ts)
 - [server/handler_pages.go](server/handler_pages.go)
 
 ## 核心组件实现
@@ -257,11 +262,13 @@ Slider 支持多用户同时访问 Web 控制台。为了确保安全性和隔�
 
 本章节涉及的核心源文件如下：
 
-- [server/console.go](server/console.go): Web 控制台核心逻辑与 WebSocket 桥接。
+- [server/console.go](server/console.go): 控制台主循环、命令解析和历史状态。
 - [server/ui.go](server/ui.go): 用户界面接口定义。
 - [server/console_out.go](server/console_out.go): 格式化输出实现。
 - [server/console_sftp.go](server/console_sftp.go): 交互式 SFTP 会话逻辑。
-- [server/handler.go](server/handler.go): WebSocket 升级与 PTY 管理。
-- [server/handler_pages.go](server/handler_pages.go): HTML 模板渲染处理器。
-- [server/templates/console.html](server/templates/console.html): 前端终端模拟器模板。
-- [server/templates/auth.html](server/templates/auth.html): 身份认证页面模板。
+- [server/handler_console_ws.go](server/handler_console_ws.go): Web 控制台 WebSocket、PTY 桥接和 resize 控制消息。
+- [server/handler_pages.go](server/handler_pages.go): 嵌入式 HTML 渲染与静态资源响应。
+- [web/console.html](web/console.html): 控制台页面入口。
+- [web/auth.html](web/auth.html): 身份认证页面入口。
+- [web/src/console.ts](web/src/console.ts): xterm 终端、WebSocket 数据流和窗口尺寸上报。
+- [web/src/auth.ts](web/src/auth.ts): 浏览器侧 challenge 签名登录流程。

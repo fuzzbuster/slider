@@ -23,12 +23,12 @@
 Slider 的 SOCKS5 代理模块是其内网穿透能力的核心组成部分。它不仅提供了一个标准的本地 SOCKS5 服务器，更重要的是，它通过 SSH 隧道实现了“反向代理”功能，允许控制端（Controller）通过受控端（Agent）的视角访问内网资源。
 
 该模块主要由三部分组成：
-1. **协议实现层** (`pkg/instance/socks`)：封装了 SOCKS5 服务端和客户端的逻辑，利用 `armon/go-socks5` 库处理复杂的协议细节，并实现了自定义的 SSH 通道中转逻辑。
-2. **控制指令层** (`server/commands_socks.go`)：提供了 `socks` 命令行接口，用于管理本地及基于会话（Session）的代理服务器。
+1. **协议实现层** (`pkg/instance/socks`)：封装了 SOCKS5 服务端和客户端的逻辑，当前使用 `github.com/things-go/go-socks5` 提供的 `ServeConn` API 处理协议细节，并实现了自定义的 SSH 通道中转逻辑。
+2. **控制指令层** (`server/commands_socks.go`, `server/socks_local.go`, `server/socks_session.go`, `server/socks_list.go`)：提供 `socks` 命令行接口，并将本地 SOCKS、会话 SOCKS 和列表展示拆分到独立文件。
 3. **会话路由层** (`pkg/session/routing.go`)：在 Agent 端处理来自控制端的 SOCKS5 通道请求，实现流量的最终落地。
 
 **模块统计**：
-- 核心文件数：5 个
+- 核心文件数：约 7 个
 - 涉及子模块：`pkg/instance/socks`, `server`, `pkg/session`
 - 覆盖深度：全面覆盖协议握手、通道转换及反向代理实现。
 
@@ -130,7 +130,7 @@ Slider 利用了 SSH 的通道（Channel）机制来多路复用 SOCKS5 流量�
 
 ### LocalServer：独立本地服务端
 
-`LocalServer` 用于在控制端开启一个标准的 SOCKS5 服务，不依赖于特定的 Agent 会话。它主要用于本地测试或作为其他代理链的一环。
+`LocalServer` 用于在控制端开启一个标准的 SOCKS5 服务，不依赖于特定的 Agent 会话。它主要用于本地测试或作为其他代理链的一环。服务端命令层已拆分为 `socks_local.go`、`socks_session.go` 和 `socks_list.go`，分别负责本地服务、会话服务和状态列表，`commands_socks.go` 只保留参数解析和分派。
 
 ```go
 // pkg/instance/socks/server.go
@@ -138,7 +138,7 @@ Slider 利用了 SSH 的通道（Channel）机制来多路复用 SOCKS5 流量�
 type LocalServer struct {
     listener net.Listener
     port     int
-    server   *socks5.Server // 使用 armon/go-socks5
+    server   *socks5.Server // 使用 things-go/go-socks5
     logger   *slog.Logger
 }
 ```
@@ -277,13 +277,19 @@ Slider 的 SOCKS5 实现充分利用了 Go 语言的并发特性：
 
 - `pkg/instance/socks/server.go`: SOCKS5 服务端核心实现，管理本地监听器。
 - `pkg/instance/socks/client.go`: SOCKS5 客户端逻辑，负责 SSH 通道建立与握手。
-- `server/commands_socks.go`: `socks` 控制命令，处理 CLI 输入与服务生命周期。
+- `server/commands_socks.go`: `socks` 控制命令入口，处理 CLI 参数解析与分派。
+- `server/socks_local.go`: 本地 SOCKS5 服务的创建、停止和状态保存。
+- `server/socks_session.go`: 本地/远程会话 SOCKS endpoint 的创建与销毁。
+- `server/socks_list.go`: 汇总展示本地、直接会话和远程会话上的 SOCKS 服务。
 - `pkg/session/routing.go`: Agent 端通道路由，将 `socks5` 通道映射到协议处理器。
-- `pkg/conf/constants.go`: 定义了 `SSHChannelSocks5` 等协议常量。
-- `pkg/sconn/conn.go`: 提供 SSH 通道与 `net.Conn` 接口的转换工具。
+- `pkg/conf/ssh.go`: 定义了 `SSHChannelSocks5` 等协议常量。
+- `pkg/sconn/sshchanconn.go`: 提供 SSH 通道与 `net.Conn` 接口的转换工具。
 
 **Section sources**:
 - [pkg/instance/socks/server.go](pkg/instance/socks/server.go)
 - [pkg/instance/socks/client.go](pkg/instance/socks/client.go)
 - [server/commands_socks.go](server/commands_socks.go)
+- [server/socks_local.go](server/socks_local.go)
+- [server/socks_session.go](server/socks_session.go)
+- [server/socks_list.go](server/socks_list.go)
 - [pkg/session/routing.go](pkg/session/routing.go)

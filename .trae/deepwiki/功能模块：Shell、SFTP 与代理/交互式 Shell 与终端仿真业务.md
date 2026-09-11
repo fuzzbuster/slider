@@ -90,7 +90,7 @@ sequenceDiagram
 PTY 的管理是 Shell 业务的基石，主要由 `pkg/instance/shell/service.go` 中的 `Service` 结构体负责。
 
 ### SSH 通道生命周期
-当 `Start` 方法被调用时，`Service` 会启动一个复杂的初始化流程：
+当 `Serve` 方法被调用时，`Service` 会启动一个复杂的初始化流程：
 1. **尺寸预同步**：在开启主 Shell 通道前，先通过 `conf.SSHChannelInitSize` 通道发送当前的终端行列数。这解决了某些 Shell 在启动时如果不知道尺寸会导致渲染错乱的问题。
 2. **环境注入**：通过 `conf.SSHRequestEnv` 请求发送环境变量。Slider 会注入 `TERM=xterm-256color` 以及内部标识位。
 3. **PTY 请求与 Shell 激活**：发送 `conf.SSHRequestShell` 请求。此时，远程 Agent 会调用系统 API 分配 PTY，并将标准输入输出重定向到该 PTY。
@@ -98,7 +98,7 @@ PTY 的管理是 Shell 业务的基石，主要由 `pkg/instance/shell/service.g
 ### 核心代码片段：通道开启逻辑
 ```go
 // pkg/instance/shell/service.go
-func (s *Service) Start(conn net.Conn) error {
+func (s *Service) Serve(conn net.Conn) error {
     // ... 获取尺寸逻辑 ...
     initChan, reqs, oErr := s.opener.OpenChannel(conf.SSHChannelInitSize, initSize)
     if oErr == nil {

@@ -9,6 +9,7 @@
 3. [命令行接口 (CLI) 设计](#命令行接口-cli-设计)
    - [Cobra 命令树结构](#cobra-命令树结构)
    - [核心子命令与运行模式](#核心子命令与运行模式)
+   - [客户端 TLS 与指纹校验参数](#客户端-tls-与指纹校验参数)
    - [扩展新的 CLI 命令](#扩展新的-cli-命令)
 4. [命令行自动补全逻辑](#命令行自动补全逻辑)
    - [补全系统架构](#补全系统架构)
@@ -141,6 +142,21 @@ graph TD
 4.  **Callback (回调模式)**：虽然由 Gateway 发起连接，但请求被 Peer 反向控制。
 
 这些复杂的逻辑通过简单的 CLI 参数传递给底层的 SSH 引擎。Slider 的 CLI 设计确保了即使是复杂的隧道配置，也能通过直观的子命令参数来完成。
+
+### 客户端 TLS 与指纹校验参数
+
+当前客户端连接安全分为传输层 TLS 校验和 SSH HostKey 校验两层：
+
+- `--server-ca`：为出站 HTTPS/WSS 连接提供自定义 CA 证书池。
+- `--server-name`：覆盖 TLS 校验使用的 ServerName；未设置时使用服务端 URL 的主机名。
+- `--fingerprint`：校验服务端 SSH HostKey 指纹，可传入单个指纹或包含多个指纹的文件。
+- `--tls-cert` / `--tls-key`：为客户端出站连接提供 TLS 客户端证书。
+
+当服务端 URL 不是 HTTPS 时，客户端必须提供 `--fingerprint`，否则 `RunClient` 会拒绝启动。这避免了明文 WebSocket 和 SSH HostKey 两层都没有对端身份校验的配置。`--server-ca` 与 `--server-name` 只适用于主动连接模式，因此与 `--listener` 互斥。
+
+**Section sources**:
+- [client/cli.go](client/cli.go)
+- [client/config.go](client/config.go)
 
 ### 扩展新的 CLI 命令
 

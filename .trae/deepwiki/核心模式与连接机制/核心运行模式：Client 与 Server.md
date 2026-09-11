@@ -66,6 +66,9 @@ type BidirectionalSession struct {
 	// 会话状态
 	localInterpreter *interpreter.Interpreter // 本地系统信息
 	peerBaseInfo     interpreter.BaseInfo     // 对端系统信息
+	peerProcessInfo  interpreter.ProcessInfo  // 对端进程诊断，仅用于展示
+	peerIdentity     string                   // 对端服务端身份 fingerprint:port
+	parentSessionID  int64                    // Beacon 父会话
 	active           bool
 	sessionMutex     sync.Mutex
 
@@ -77,7 +80,7 @@ type BidirectionalSession struct {
 }
 ```
 
-该结构体通过 `sessionMutex` 保证了状态修改的原子性。它不仅存储了物理连接，还承载了逻辑上的“解释器”信息，这对于跨平台的命令执行至关重要。
+该结构体通过 `sessionMutex` 保证了状态修改的原子性。它不仅存储物理连接，还承载解释器信息、对端服务端身份和进程诊断信息。`peerProcessInfo` 在写入前会经过 `interpreter.SanitizeProcessInfo` 清洗，只用于 `sessions`/`sysinfo` 等展示和排障场景，不参与路由或授权判断。
 
 ### 角色系统 (Role System)
 
@@ -245,19 +248,17 @@ Server 模式（对应 `OperatorListener` 或 `GatewayListener`）负责管理�
 
 ### 多客户端 Session 管理
 
-服务器维护了一个全局的 `sessionTrack` 结构，通过 `map[int64]*session.BidirectionalSession` 来索引所有活跃的会话。
+服务器维护了一个全局的 `sessionTrack` 结构，通过 `map[int64]*session.BidirectionalSession` 来索引所有活跃的本地会话。通过 Gateway 发现的远程会话不会写入这个 map，而是由 `server/session_resolver.go` 归一化为 `UnifiedSession`，并使用 `SessionKey{GatewayID, Path, ActualID}` 维持稳定的展示 ID。
 
 ```go
 // server/server.go
 
 type sessionTrack struct {
-	SessionCount  int64
-	SessionActive int64
 	Sessions      map[int64]*session.BidirectionalSession
 }
 ```
 
-每当新连接接入，服务器会分配一个唯一的 `sessionID`。通过 `GetAllSessions` 方法，管理员可以在控制台查看到所有在线的 Agent 及其系统详细信息（OS、Arch、Hostname 等）。
+每当新连接接入，服务器会分配一个唯一的 `sessionID`。通过 `GetAllSessions` 和 `ResolveUnifiedSessions`，管理员可以在控制台查看本地与远程 Agent 的系统信息、角色、连接方向、工作目录和经过清洗的进程诊断。
 
 ### 重复连接与冲突处理
 
@@ -334,6 +335,8 @@ func (s *BidirectionalSession) Close() error {
 - [pkg/session/lifecycle.go](pkg/session/lifecycle.go): Session 的创建与关闭逻辑。
 - [pkg/session/routing.go](pkg/session/routing.go): SSH 频道（Channel）的路由与处理。
 - [pkg/session/requests.go](pkg/session/requests.go): SSH 全局请求（Global Request）的处理。
+- [pkg/session/request_mesh.go](pkg/session/request_mesh.go): 网格会话发现和跨节点请求转发。
+- [server/session_resolver.go](server/session_resolver.go): 本地/远程会话统一视图。
 - [client/client.go](client/client.go): 客户端连接发起与升级逻辑。
 - [server/server.go](server/server.go): 服务器端连接接收与 Session 跟踪。
 

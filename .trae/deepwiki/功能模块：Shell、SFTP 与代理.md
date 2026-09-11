@@ -40,7 +40,7 @@
 
 Slider 的核心价值在于其提供的丰富运维功能。与传统的命令执行工具不同，Slider 旨在提供一个全功能的远程工作环境。这意味着它不仅需要能够执行简单的命令，还需要支持复杂的交互式操作，如全功能的 Shell 环境、高效的文件传输、以及灵活的网络隧道。
 
-这些功能模块由 `instance.Config` 作为轻量协调器持有，并静态注册到 `ServiceManager`。`Config` 只负责监听、活动连接和停止流程，`ServiceManager` 根据强类型 `EndpointType` 将连接交给 Shell、SOCKS 或 SSH 子服务；协议细节保留在各自子包中。所有功能都建立在 SSH 协议之上，利用 SSH 的多路复用能力，在单一底层连接中承载多种业务流量。
+这些功能模块由 `pkg/instance.Config` 作为 endpoint 组合根静态装配。`Config` 持有 `ServiceManager`、Shell/SOCKS/SSH 子服务以及 `PortForwardManager`；`ServiceManager` 只按强类型 `EndpointType` 分发连接，具体协议细节仍保留在各自子包中。每次监听生命周期由 `endpointRun` 独立管理，包括 listener、已接受连接、幂等停止和 goroutine 等待。所有功能都建立在 SSH 协议之上，利用 SSH 的多路复用能力，在单一底层连接中承载多种业务流量。
 
 ## 交互式 Shell 与 PTY 控制
 
@@ -60,7 +60,8 @@ sequenceDiagram
     participant Remote as 远程系统 PTY
 
     User->>Instance: 打开 "shell" 通道
-    Instance->>ShellSvc: Start(conn)
+    Instance->>ServiceManager: Serve(ShellEndpoint, conn)
+    ServiceManager->>ShellSvc: Serve(conn)
     ShellSvc->>User: 打开 "init-size" 通道 (传递初始窗口大小)
     User->>ShellSvc: 发送 pty-req (包含 TERM, cols, rows)
     ShellSvc->>Remote: 分配 PTY 并启动 Shell 进程
@@ -75,12 +76,12 @@ sequenceDiagram
 
 上述时序图描述了从用户发起连接到数据持续交换的过程。重点在于 `init-size` 通道的引入，它解决了在 Shell 进程启动前同步终端尺寸的问题。随后，`pty-req` 请求携带了详细的终端属性，使得远程 PTY 能够正确模拟用户的本地环境。在数据传输阶段，Slider 实现了透明的双向拷贝，确保了命令输入和程序输出的实时性。
 
-在 `pkg/instance/shell/service.go` 中，`Start` 方法是处理 Shell 连接的核心入口。它首先确定初始的终端大小，通过 `init-size` 通道告知客户端，然后建立起双向的数据管道。
+在 `pkg/instance/shell/service.go` 中，`Serve` 方法是处理 Shell endpoint 连接的核心入口。它首先确定初始的终端大小，通过 `init-size` 通道告知客户端，然后建立起双向的数据管道。
 
 ```go
 // pkg/instance/shell/service.go
 
-func (s *Service) Start(conn net.Conn) error {
+func (s *Service) Serve(conn net.Conn) error {
     // ... 获取终端大小逻辑 ...
 
     // 发送初始大小消息
@@ -207,7 +208,7 @@ Slider 实现了两种方向的 TCP 转发：
 - **本地转发 (Local Forwarding)**：在本地机器上监听端口，将流量转发到远程目标。
 - **远程转发 (Remote/Reverse Forwarding)**：在远程机器上监听端口，将流量转发回本地目标。
 
-这是通过 `pkg/instance/portforward/manager.go` 中的 `Manager` 结构体实现的。它利用了 SSH 协议的 `direct-tcpip` 通道类型。
+这是通过 `pkg/instance/portforward/manager.go` 中的 `Manager` 结构体以及拆分后的 `local_tcp.go`、`local_udp.go`、`remote.go` 实现的。`Manager` 维护 TCP/UDP 的本地与远程映射，具体监听、请求发送和取消逻辑由这些独立文件承载。
 
 ```mermaid
 flowchart LR
@@ -281,7 +282,7 @@ Slider 提供了内置的 SOCKS5 代理支持，这在需要访问远程内网�
 
 ### SOCKS5 服务端
 
-`pkg/instance/socks/server.go` 封装了 `github.com/armon/go-socks5` 库，提供了一个简单的接口来启动本地代理服务。Slider 可以将此服务暴露在本地回环地址或所有网卡上。
+`pkg/instance/socks/server.go` 封装了 `github.com/things-go/go-socks5` 库，提供了一个可以直接在已接受连接上调用 `ServeConn` 的 SOCKS5 服务端。Slider 可以将此服务暴露在本地回环地址或所有网卡上；当前选择该库的原因是它与 Slider 的 error-returning `ServeConn` 接口契合，并且测试与 CI 覆盖更完整。
 
 ```go
 // pkg/instance/socks/server.go
@@ -339,7 +340,7 @@ Slider 不仅仅是一个 SSH 客户端，它还可以在实例内部运行一�
 ```go
 // pkg/instance/sshservice/service.go
 
-func (s *Service) Start(conn net.Conn) error {
+func (s *Service) Serve(conn net.Conn) error {
     sshConf := &ssh.ServerConfig{NoClientAuth: true}
     // ... 配置身份验证回调 ...
 
@@ -378,14 +379,24 @@ type ChannelOpener interface {
 }
 ```
 
+### EndpointService 接口
+Shell、SOCKS 和 SSH endpoint 实现统一的 `EndpointService` 接口，这使得 `ServiceManager` 可以统一分发已接受的连接并在 endpoint 关闭时释放服务状态。
+
+```go
+type EndpointService interface {
+    Serve(net.Conn) error
+    Close() error
+}
+```
+
 ### Instance 配置结构体
-`pkg/instance/instance.go` 中的 `Config` 结构体（实际上充当了 Instance 对象）是 endpoint 协调者。它持有固定服务和 `ServiceManager`，并负责监听器、已接受连接和停止状态；Manager 根据 `EndpointType` 完成分发。
+`pkg/instance/instance.go` 中的 `Config` 结构体（实际上充当了 Instance 对象）是 endpoint 的协调者。它保存服务目录、端口转发管理器、SSH 通道 opener 和当前运行态；真正的监听循环在 `endpoint_run.go` 中，收到连接后通过 `ServiceManager.Serve(endpointType, conn)` 交给对应服务。
 
 ```mermaid
 graph TB
     subgraph Instance[Slider Instance]
-        ER[Endpoint Run]
-        SM[Service Manager]
+        ER[endpointRun]
+        SM[ServiceManager]
         PF[PortForward Manager]
         SC[SOCKS Client]
         SH[Shell Service]
@@ -398,12 +409,10 @@ graph TB
     SM -->|ShellEndpoint| SH
     SM -->|SshEndpoint| SS
 
-    SC -.-> PF
-    SH -.-> PF
     SS -.-> PF
 ```
 
-架构图展示了 Slider 内部的组件关系。`Endpoint Run` 拥有 listener、活动连接和幂等停止流程，`ServiceManager` 只负责类型到服务的静态映射。底层的 `PortForward Manager` 与 endpoint 服务同层，专门管理隧道状态，不实现单连接 `EndpointService`。
+架构图展示了 Slider 内部的组件关系。`endpointRun` 持有具体 listener 和活动连接集合，`ServiceManager` 只负责 endpoint 类型到服务的静态映射。`PortForward Manager` 与 endpoint 服务同层，专门管理多映射和多 channel，不再强行包装成单连接服务。
 
 **Section sources**:
 - [pkg/instance/instance.go](pkg/instance/instance.go)
@@ -415,13 +424,17 @@ graph TB
 
 | 文件路径 | 描述 |
 | :--- | :--- |
-| `pkg/instance/instance.go` | 实例核心编排器，负责服务初始化与连接分发 |
+| `pkg/instance/instance.go` | 实例核心编排器，负责服务初始化与状态保存 |
+| `pkg/instance/endpoint_run.go` | endpoint listener、活动连接和幂等停止流程 |
 | `pkg/instance/shell/service.go` | 交互式 Shell 服务实现，处理 PTY 与数据管道 |
 | `pkg/escseq/escseq.go` | 终端转义序列工具库，用于控制台 UI 美化 |
 | `server/command_sftp.go` | SFTP 客户端命令注册与上下文管理 |
 | `server/commands_sftp_get.go` | SFTP 下载命令实现，包含递归下载与进度显示 |
 | `pkg/spath/path.go` | 跨平台路径处理核心逻辑 |
-| `pkg/instance/portforward/manager.go` | 端口转发管理器，支持 TCP/UDP 本地与远程转发 |
+| `pkg/instance/portforward/manager.go` | 端口转发管理器，维护 TCP/UDP 本地与远程映射 |
+| `pkg/instance/portforward/local_tcp.go` | 本地 TCP 转发监听与 `direct-tcpip` 通道打开 |
+| `pkg/instance/portforward/local_udp.go` | 本地 UDP 转发监听与 `direct-udp` 通道复用 |
+| `pkg/instance/portforward/remote.go` | 远程/反向转发请求、取消和目标拨号 |
 | `pkg/instance/socks/server.go` | SOCKS5 本地代理服务器实现 |
 | `pkg/instance/socks/client.go` | SOCKS5 客户端握手协议实现 |
 | `pkg/instance/sshservice/service.go` | 嵌入式 SSH 服务器实现 |
@@ -429,6 +442,7 @@ graph TB
 
 **Section sources**:
 - [pkg/instance/instance.go](pkg/instance/instance.go)
+- [pkg/instance/endpoint_run.go](pkg/instance/endpoint_run.go)
 - [pkg/instance/shell/service.go](pkg/instance/shell/service.go)
 - [pkg/instance/portforward/manager.go](pkg/instance/portforward/manager.go)
 - [pkg/instance/socks/client.go](pkg/instance/socks/client.go)
