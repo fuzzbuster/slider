@@ -35,6 +35,24 @@ $(BUILD_DIR):
 .PHONY: all
 all: clean $(BUILD_DIR) macos-arm64 macos-amd64 windows-x86 windows-amd64 windows-arm64 linux-x86 linux-amd64 linux-arm64
 
+.PHONY: test test-race test-e2e test-e2e-web test-e2e-extended
+test:
+	go test ./...
+
+test-race:
+	go test -race ./...
+
+test-e2e:
+	go test -tags=e2e -count=1 ./e2e
+
+test-e2e-web:
+	npm ci
+	npx playwright install chromium
+	npm run test:e2e:web
+
+test-e2e-extended:
+	SLIDER_E2E_LARGE=1 SLIDER_E2E_INTERACTIVE=1 go test -tags=e2e -count=1 ./e2e
+
 # Build for common platforms for quick testing
 .PHONY: basic
 basic: $(BUILD_DIR) macos-amd64 linux-amd64 windows-x86

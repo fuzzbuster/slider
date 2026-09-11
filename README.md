@@ -784,3 +784,18 @@ When using this flag, you should also provide `--server-name` to specify the exp
 
 ##### `--server-name`:
 Specifies the server name for TLS verification. This is used in combination with `--ca` to verify that the server's certificate matches the expected server name.
+
+## Testing
+
+Run package tests with `make test`, native process-level tests with
+`make test-e2e`, and browser tests with `make test-e2e-web`.
+
+The extended suite includes a real interactive Vim session and 1 GiB SFTP
+upload/download:
+
+```bash
+make test-e2e-extended
+```
+
+See [e2e/README.md](e2e/README.md) for the functional coverage matrix,
+platform scope, stability rules, and report locations.

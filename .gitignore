@@ -2,8 +2,13 @@
 .vscode
 dist
 build
+artifacts
 server/cmd/build
 client/cmd/build
+node_modules/
+playwright-report/
+test-results/
+.DS_Store
 .trae/*
 !.trae/deepwiki/
 !.trae/deepwiki/**
