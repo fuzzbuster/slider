@@ -53,6 +53,38 @@ jobs:
         env:
           TEST_EXIT_CODE: ${{ steps.test.outputs.exit_code || '0' }}
 
+  frontend:
+    name: Verify Web Frontend
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v5
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Type-check frontend
+        run: npm run typecheck:web
+
+      - name: Build frontend
+        run: npm run build:web
+
+      - name: Verify committed frontend assets
+        shell: bash
+        run: |
+          if ! git diff --quiet -- server/web/dist || \
+            [[ -n "$(git ls-files --others --exclude-standard -- server/web/dist)" ]]; then
+            git status --short -- server/web/dist
+            git diff -- server/web/dist
+            exit 1
+          fi
+
   lint:
     name: Run Linting
     runs-on: ubuntu-latest
@@ -88,7 +120,7 @@ jobs:
         
   pr-status:
     name: PR Status
-    needs: [test, lint, build]
+    needs: [test, frontend, lint, build]
     runs-on: ubuntu-latest
     if: always()
     steps:
@@ -97,10 +129,11 @@ jobs:
         with:
           script: |
             const testStatus = '${{ needs.test.result }}' === 'success';
+            const frontendStatus = '${{ needs.frontend.result }}' === 'success';
             const lintStatus = '${{ needs.lint.result }}' === 'success';
             const buildStatus = '${{ needs.build.result }}' === 'success';
             
-            if (testStatus && lintStatus && buildStatus) {
+            if (testStatus && frontendStatus && lintStatus && buildStatus) {
               const { owner, repo, number } = context.issue;
               
               github.rest.issues.createComment({

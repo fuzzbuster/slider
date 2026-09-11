@@ -1,0 +1,195 @@
+html,
+body {
+  height: 100%;
+  overflow: hidden;
+}
+
+.console-shell {
+  display: grid;
+  gap: 10px;
+  grid-template-rows: auto minmax(0, 1fr);
+  height: 100vh;
+  height: 100dvh;
+  padding: 12px;
+}
+
+.console-toolbar {
+  align-items: center;
+  display: flex;
+  gap: 16px;
+  justify-content: space-between;
+  min-width: 0;
+}
+
+.console-identity {
+  align-items: center;
+  display: flex;
+  gap: 14px;
+  min-width: 0;
+}
+
+.console-title {
+  align-items: center;
+  display: flex;
+  flex: 0 0 auto;
+  gap: 9px;
+}
+
+.brand-mark {
+  align-items: center;
+  background: var(--accent);
+  border-radius: 5px;
+  color: #ffffff;
+  display: inline-flex;
+  font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
+  font-size: 15px;
+  font-weight: 700;
+  height: 26px;
+  justify-content: center;
+  width: 26px;
+}
+
+h1 {
+  font-size: 18px;
+  font-weight: 650;
+  letter-spacing: 0;
+  line-height: 1.2;
+  margin: 0;
+  white-space: nowrap;
+}
+
+.status {
+  align-items: center;
+  color: var(--text-secondary);
+  display: inline-flex;
+  font-size: 13px;
+  gap: 7px;
+  line-height: 1.3;
+  min-width: 0;
+}
+
+.status-indicator {
+  background: currentColor;
+  border-radius: 50%;
+  flex: 0 0 7px;
+  height: 7px;
+  width: 7px;
+}
+
+.status.connected {
+  color: var(--success);
+}
+
+.status.connecting {
+  color: var(--warning);
+}
+
+.status.disconnected {
+  color: var(--danger);
+}
+
+.console-actions {
+  align-items: center;
+  display: flex;
+  flex: 0 0 auto;
+  gap: 4px;
+}
+
+.logout-button {
+  align-items: center;
+  background: transparent;
+  border: 1px solid transparent;
+  border-radius: 6px;
+  color: var(--text-secondary);
+  cursor: pointer;
+  display: inline-flex;
+  font-size: 13px;
+  gap: 7px;
+  height: 38px;
+  padding: 0 10px;
+}
+
+.logout-button:hover {
+  background: var(--surface-raised);
+  border-color: var(--border-color);
+  color: var(--text-primary);
+}
+
+.logout-button svg {
+  height: 17px;
+  stroke-width: 1.8;
+  width: 17px;
+}
+
+.terminal-frame {
+  background: #101214;
+  border: 1px solid var(--border-color);
+  border-radius: 6px;
+  min-height: 0;
+  min-width: 0;
+  overflow: hidden;
+  padding: 8px;
+}
+
+#terminal,
+#terminal .xterm {
+  height: 100%;
+}
+
+#terminal .xterm-viewport {
+  scrollbar-color: #4d555c #171a1d;
+  scrollbar-width: thin;
+}
+
+@media (max-width: 640px) {
+  .console-shell {
+    gap: 8px;
+    padding: 8px;
+  }
+
+  .console-toolbar {
+    gap: 8px;
+  }
+
+  .console-identity {
+    align-items: flex-start;
+    flex-direction: column;
+    gap: 4px;
+  }
+
+  h1 {
+    font-size: 16px;
+  }
+
+  .brand-mark {
+    height: 24px;
+    width: 24px;
+  }
+
+  .status {
+    font-size: 12px;
+    padding-left: 1px;
+  }
+
+  .logout-label {
+    border: 0;
+    clip: rect(0 0 0 0);
+    height: 1px;
+    margin: -1px;
+    overflow: hidden;
+    padding: 0;
+    position: absolute;
+    white-space: nowrap;
+    width: 1px;
+  }
+
+  .logout-button {
+    justify-content: center;
+    padding: 0;
+    width: 38px;
+  }
+
+  .terminal-frame {
+    padding: 5px;
+  }
+}

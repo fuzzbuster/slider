@@ -35,22 +35,18 @@ func (c *Claims) IsExpired() bool {
 
 // IsValid performs basic validation on the claims
 func (c *Claims) IsValid() bool {
-	// Check required fields
 	if c.Issuer == "" || c.Subject == "" {
 		return false
 	}
 
-	// Check timestamps
 	if c.IssuedAt <= 0 || c.ExpiresAt <= 0 {
 		return false
 	}
 
-	// Check that expiration is after issuance
 	if c.ExpiresAt <= c.IssuedAt {
 		return false
 	}
 
-	// Check not expired
 	if c.IsExpired() {
 		return false
 	}

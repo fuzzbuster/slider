@@ -61,12 +61,7 @@ func (s *server) HandleBeaconConnect(conn net.Conn, parentSessionID int64) {
 	biSession.SetRole(session.OperatorListener)
 	biSession.SetPeerRole(session.AgentConnector)
 
-	// Add to session track
-	s.sessionTrackMutex.Lock()
-	s.sessionTrack.Sessions[biSession.GetID()] = biSession
-	s.sessionTrack.SessionCount = biSession.GetID()
-	s.sessionTrack.SessionActive++
-	s.sessionTrackMutex.Unlock()
+	s.addSession(biSession)
 
 	defer func() {
 		s.dropWebSocketSession(biSession)

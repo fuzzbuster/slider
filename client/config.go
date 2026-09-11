@@ -2,6 +2,7 @@ package client
 
 import (
 	"crypto/tls"
+	"crypto/x509"
 	"fmt"
 	"net"
 	"net/http"
@@ -44,6 +45,8 @@ type Config struct {
 	ListenerCA    string
 	ClientTlsCert string
 	ClientTlsKey  string
+	ServerCA      string
+	ServerName    string
 	JsonLog       bool
 	CallerLog     bool
 	ServerURL     string
@@ -77,12 +80,8 @@ func RunClient(cfg *Config) {
 	}
 
 	c := client{
-		Logger:   log,
-		shutdown: make(chan bool, 1),
-		sessionTrack: &sessionTrack{
-			Sessions: make(map[int64]*session.BidirectionalSession),
-		},
-		firstRun:    true,
+		Logger:      log,
+		sessions:    make(map[int64]*session.BidirectionalSession),
 		customProto: cfg.CustomProto,
 		interpreter: i,
 		listenerConf: &listenerConf{
@@ -181,7 +180,6 @@ func RunClient(cfg *Config) {
 			}
 		}
 
-		// Start Listener in a goroutine
 		go func() {
 			handler := c.buildRouter()
 
@@ -206,7 +204,6 @@ func RunClient(cfg *Config) {
 		c.Logger.Infof("Listening on %s://%s", listenerProto, clientAddr.String())
 	}
 
-	// If ServerURL is provided, connect to Server
 	if cfg.ServerURL != "" {
 		su, uErr := listener.ResolveURL(cfg.ServerURL)
 		if uErr != nil {
@@ -214,18 +211,38 @@ func RunClient(cfg *Config) {
 		}
 
 		c.serverURL = su
-		c.wsConfig = listener.DefaultWebSocketDialer
+		c.wsConfig = listener.NewWebSocketDialer()
+
+		tlsConfig := &tls.Config{ServerName: cfg.ServerName}
+		if tlsConfig.ServerName == "" {
+			tlsConfig.ServerName = su.Hostname()
+		}
+		if cfg.ServerCA != "" {
+			caPEM, rErr := os.ReadFile(cfg.ServerCA)
+			if rErr != nil {
+				c.Logger.FatalWith("Failed to read server CA", slog.F("err", rErr))
+			}
+			rootCAs := x509.NewCertPool()
+			if !rootCAs.AppendCertsFromPEM(caPEM) {
+				c.Logger.Fatalf("Failed to parse server CA")
+			}
+			tlsConfig.RootCAs = rootCAs
+		}
 		if cfg.ClientTlsCert != "" && cfg.ClientTlsKey != "" {
 			tlsCert, lErr := tls.LoadX509KeyPair(cfg.ClientTlsCert, cfg.ClientTlsKey)
 			if lErr != nil {
 				c.Logger.FatalWith("Failed to load TLS certificate",
 					slog.F("err", lErr))
 			}
-			c.wsConfig.TLSClientConfig = &tls.Config{Certificates: []tls.Certificate{tlsCert}}
+			tlsConfig.Certificates = []tls.Certificate{tlsCert}
 		} else if cfg.ClientTlsCert != "" || cfg.ClientTlsKey != "" {
 			c.Logger.FatalWith("Client TLS certificate or key provided but not both",
 				slog.F("cert", cfg.ClientTlsCert),
 				slog.F("key", cfg.ClientTlsKey))
+		}
+		c.wsConfig.TLSClientConfig = tlsConfig
+		if su.Scheme != "https" && cfg.Fingerprint == "" {
+			c.Logger.Fatalf("Plaintext server connections require --fingerprint for SSH host verification")
 		}
 
 		// Main connection loop
@@ -238,7 +255,7 @@ func RunClient(cfg *Config) {
 			case <-shutdown:
 				loop = false
 			default:
-				if !cfg.Retry || c.firstRun {
+				if !cfg.Retry {
 					loop = false
 					continue
 				}
@@ -246,7 +263,6 @@ func RunClient(cfg *Config) {
 			}
 		}
 	} else {
-		// If only listening, block here until shutdown
 		if cfg.ListenerOn {
 			<-shutdown
 		} else {

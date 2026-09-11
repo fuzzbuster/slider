@@ -3,8 +3,12 @@ package server
 import (
 	"net/http"
 	"net/http/httptest"
+	"net/url"
+	"regexp"
+	"strings"
 	"testing"
 
+	"slider/pkg/conf"
 	"slider/pkg/listener"
 	"slider/pkg/slog"
 )
@@ -34,6 +38,12 @@ func TestHandler_AuthRoutes(t *testing.T) {
 			authOn:       true,
 			path:         listener.AuthLoginPath,
 			expectedCode: http.StatusMethodNotAllowed, // GET on POST-only endpoint
+		},
+		{
+			name:         "AuthOn_AuthChallenge",
+			authOn:       true,
+			path:         listener.AuthChallengePath,
+			expectedCode: http.StatusMethodNotAllowed,
 		},
 		{
 			name:         "AuthOff_AuthLogin",
@@ -77,5 +87,96 @@ func TestHandler_AuthRoutes(t *testing.T) {
 				}
 			}
 		})
+	}
+}
+
+func TestGatewayOperatorRequiresAuthentication(t *testing.T) {
+	for _, tc := range []struct {
+		name       string
+		authOn     bool
+		wantRouted bool
+	}{
+		{name: "authentication disabled", authOn: false, wantRouted: false},
+		{name: "authentication enabled", authOn: true, wantRouted: true},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			s := &server{
+				Logger:      slog.NewLogger("gateway-route-test"),
+				authOn:      tc.authOn,
+				gateway:     true,
+				customProto: conf.Proto,
+				urlRedirect: &url.URL{},
+			}
+			request := httptest.NewRequest(http.MethodGet, "/gateway", nil)
+			request.Header.Set("Upgrade", "websocket")
+			request.Header.Set("Sec-WebSocket-Protocol", conf.Proto)
+			request.Header.Set("Sec-WebSocket-Operation", conf.OperationOperator)
+			recorder := httptest.NewRecorder()
+
+			s.buildRouter().ServeHTTP(recorder, request)
+			routed := recorder.Code != http.StatusNotFound
+			if routed != tc.wantRouted {
+				t.Fatalf("routed = %v, want %v (status %d)", routed, tc.wantRouted, recorder.Code)
+			}
+		})
+	}
+}
+
+func TestWebFrontendRoutes(t *testing.T) {
+	s := &server{
+		Logger:        slog.NewLogger("web-frontend-test"),
+		httpConsoleOn: true,
+		urlRedirect:   &url.URL{},
+	}
+	handler := s.buildRouter()
+
+	pageRequest := httptest.NewRequest(http.MethodGet, listener.ConsolePath, nil)
+	pageRecorder := httptest.NewRecorder()
+	handler.ServeHTTP(pageRecorder, pageRequest)
+	if pageRecorder.Code != http.StatusOK {
+		t.Fatalf("console page returned %d", pageRecorder.Code)
+	}
+	if cacheControl := pageRecorder.Header().Get("Cache-Control"); cacheControl != "no-cache" {
+		t.Fatalf("console cache control = %q, want no-cache", cacheControl)
+	}
+
+	body := pageRecorder.Body.String()
+	if strings.Contains(body, "cdn.jsdelivr.net") {
+		t.Fatal("console page references the legacy CDN")
+	}
+	assetPath := regexp.MustCompile(`/console/assets/[^"]+\.js`).FindString(body)
+	if assetPath == "" {
+		t.Fatal("console page does not reference an embedded JavaScript asset")
+	}
+
+	assetRequest := httptest.NewRequest(http.MethodGet, assetPath, nil)
+	assetRecorder := httptest.NewRecorder()
+	handler.ServeHTTP(assetRecorder, assetRequest)
+	if assetRecorder.Code != http.StatusOK {
+		t.Fatalf("console asset returned %d", assetRecorder.Code)
+	}
+	if cacheControl := assetRecorder.Header().Get("Cache-Control"); cacheControl !=
+		"public, max-age=31536000, immutable" {
+		t.Fatalf("asset cache control = %q", cacheControl)
+	}
+	if contentType := assetRecorder.Header().Get("Content-Type"); !strings.Contains(contentType, "javascript") {
+		t.Fatalf("asset content type = %q, want JavaScript", contentType)
+	}
+
+	methodRequest := httptest.NewRequest(http.MethodPost, assetPath, nil)
+	methodRecorder := httptest.NewRecorder()
+	handler.ServeHTTP(methodRecorder, methodRequest)
+	if methodRecorder.Code != http.StatusMethodNotAllowed {
+		t.Fatalf("POST console asset returned %d, want 405", methodRecorder.Code)
+	}
+
+	disabled := (&server{
+		Logger:      slog.NewLogger("web-frontend-disabled-test"),
+		urlRedirect: &url.URL{},
+	}).buildRouter()
+	disabledRecorder := httptest.NewRecorder()
+	disabled.ServeHTTP(disabledRecorder, assetRequest)
+	if disabledRecorder.Code != http.StatusNotFound {
+		t.Fatalf("disabled console asset returned %d, want 404", disabledRecorder.Code)
 	}
 }

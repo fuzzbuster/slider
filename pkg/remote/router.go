@@ -11,7 +11,6 @@ import (
 type Handler func(nc ssh.NewChannel, sess session.Session, srv session.ApplicationServer) error
 
 // Router routes application-specific SSH channels (e.g., slider-connect)
-// It implements session.ApplicationRouter interface
 type Router struct {
 	handlers map[string]Handler
 	logger   *slog.Logger

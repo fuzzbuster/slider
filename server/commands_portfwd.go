@@ -24,23 +24,28 @@ const (
 )
 
 // PortFwdCommand implements the 'portfwd' command
-type PortFwdCommand struct{}
+type PortFwdCommand struct{ BaseCommand }
 
-func (c *PortFwdCommand) Name() string             { return portFwdCmd }
-func (c *PortFwdCommand) Description() string      { return portFwdDesc }
-func (c *PortFwdCommand) Usage() string            { return portFwdUsage }
-func (c *PortFwdCommand) IsRemoteCompletion() bool { return false }
+func (c *PortFwdCommand) Name() string        { return portFwdCmd }
+func (c *PortFwdCommand) Description() string { return portFwdDesc }
+func (c *PortFwdCommand) Usage() string       { return portFwdUsage }
 func (c *PortFwdCommand) Run(ctx *ExecutionContext, args []string) error {
-	svr := ctx.getServer()
+	svr := ctx.server
 	ui := ctx.UI()
 
 	portFwdFlags := pflag.NewFlagSet(portFwdCmd, pflag.ContinueOnError)
 	portFwdFlags.SetOutput(ui.Writer())
 
 	pSession := portFwdFlags.IntP("session", "s", 0, "Session ID to add or remove Port Forwarding")
-	pLocal := portFwdFlags.BoolP("local", "L", false, "Local Port Forwarding <[local_addr]:local_port:[remote_addr]:remote_port>")
-	pReverse := portFwdFlags.BoolP("reverse", "R", false, "Reverse format: <[allowed_remote_addr]:remote_port:[forward_addr]:forward_port>")
-	pRemove := portFwdFlags.BoolP("remove", "r", false, "Remove Port Forwarding from port passed as argument (requires L or R)")
+	pLocal := portFwdFlags.BoolP(
+		"local", "L", false,
+		"Local Port Forwarding <[local_addr]:local_port:[remote_addr]:remote_port>")
+	pReverse := portFwdFlags.BoolP(
+		"reverse", "R", false,
+		"Reverse format: <[allowed_remote_addr]:remote_port:[forward_addr]:forward_port>")
+	pRemove := portFwdFlags.BoolP(
+		"remove", "r", false,
+		"Remove Port Forwarding from port passed as argument (requires L or R)")
 	pUDP := portFwdFlags.BoolP("udp", "u", false, "UDP Port Forwarding")
 
 	portFwdFlags.Usage = func() {
@@ -74,8 +79,11 @@ func (c *PortFwdCommand) Run(ctx *ExecutionContext, args []string) error {
 		}
 	}
 	if portFwdFlags.Changed("remove") {
-		if portFwdFlags.NArg() != 1 || (!portFwdFlags.Changed("session")) || (!portFwdFlags.Changed("reverse") && !portFwdFlags.Changed("local")) {
-			return fmt.Errorf("flag --remove requires exactly 1 argument(s), the session flag and the reverse or local flag")
+		if portFwdFlags.NArg() != 1 ||
+			(!portFwdFlags.Changed("session")) ||
+			(!portFwdFlags.Changed("reverse") && !portFwdFlags.Changed("local")) {
+			return fmt.Errorf(
+				"flag --remove requires exactly 1 argument(s), the session flag and the reverse or local flag")
 		}
 	}
 	if portFwdFlags.Changed("session") {
@@ -85,7 +93,8 @@ func (c *PortFwdCommand) Run(ctx *ExecutionContext, args []string) error {
 	}
 	if !portFwdFlags.Changed("session") && portFwdFlags.NArg() != 0 {
 		if !portFwdFlags.Changed("local") && !portFwdFlags.Changed("reverse") && !portFwdFlags.Changed("remove") {
-			return fmt.Errorf("flag --session and at least one of the flags --local, --reverse or --remove must be specified")
+			return fmt.Errorf(
+				"flag --session and at least one of the flags --local, --reverse or --remove must be specified")
 		}
 	}
 
@@ -114,7 +123,7 @@ func (c *PortFwdCommand) Run(ctx *ExecutionContext, args []string) error {
 		totalGlobalTcpIp := 0
 
 		// Local Sessions Listing
-		sessionList := slices.Collect(maps.Values(svr.sessionTrack.Sessions))
+		sessionList := svr.GetAllSessions()
 		for _, sItem := range sessionList {
 			totalGlobalTcpIp += listSessionForwarding(tw, sItem.GetID(), sItem.GetSSHInstance())
 		}
@@ -156,7 +165,7 @@ func (c *PortFwdCommand) Run(ctx *ExecutionContext, args []string) error {
 		}
 	} else {
 		// Remote Strategy
-		key := fmt.Sprintf("portfwd:%d:%v", uSess.GatewayID, uSess.Path)
+		key := uSess.stateKey(remoteStatePortForward)
 		svr.remoteSessionsMutex.Lock()
 		if _, ok := svr.remoteSessions[key]; !ok {
 			svr.remoteSessions[key] = &RemoteSessionState{}
@@ -224,7 +233,15 @@ func listSessionForwarding(tw *tabwriter.Writer, sessionID int64, sshInst *insta
 				address = "(ssh client)"
 				port = "(ssh client)"
 			}
-			_, _ = fmt.Fprintf(tw, "\t%d\t%s\t%s\t%s\t%d\t%s\n", sessionID, address, port, mapping.SrcHost, mapping.SrcPort, mapping.Protocol)
+			_, _ = fmt.Fprintf(
+				tw,
+				"\t%d\t%s\t%s\t%s\t%d\t%s\n",
+				sessionID,
+				address,
+				port,
+				mapping.SrcHost,
+				mapping.SrcPort,
+				mapping.Protocol)
 		}
 		_, _ = fmt.Fprintln(tw)
 		_ = tw.Flush()
@@ -243,7 +260,15 @@ func listSessionForwarding(tw *tabwriter.Writer, sessionID int64, sshInst *insta
 				address = "(ssh client)"
 				port = "(ssh client)"
 			}
-			_, _ = fmt.Fprintf(tw, "\t%d\t%s\t%d\t%s\t%s\t%s\n", sessionID, mapping.SrcHost, mapping.SrcPort, address, port, mapping.Protocol)
+			_, _ = fmt.Fprintf(
+				tw,
+				"\t%d\t%s\t%d\t%s\t%s\t%s\n",
+				sessionID,
+				mapping.SrcHost,
+				mapping.SrcPort,
+				address,
+				port,
+				mapping.Protocol)
 		}
 		_, _ = fmt.Fprintln(tw)
 		_ = tw.Flush()
@@ -251,7 +276,13 @@ func listSessionForwarding(tw *tabwriter.Writer, sessionID int64, sshInst *insta
 	return count
 }
 
-func handleLocalForward(_ *server, ui UserInterface, sshInst *instance.Config, arg string, remove bool, udp bool) error {
+func handleLocalForward(
+	_ *server,
+	ui UserInterface,
+	sshInst *instance.Config,
+	arg string,
+	remove bool,
+	udp bool) error {
 	protocol := conf.ForwardingProtocolTCP
 	if udp {
 		protocol = conf.ForwardingProtocolUDP
@@ -274,7 +305,13 @@ func handleLocalForward(_ *server, ui UserInterface, sshInst *instance.Config, a
 	if pErr != nil {
 		return fmt.Errorf("failed to parse port forwarding %s: %w", fwdItem, pErr)
 	}
-	ui.PrintInfo("Creating %s Port Forwarding %s:%d->%s:%d", strings.ToUpper(msg.Protocol), msg.SrcHost, msg.SrcPort, msg.DstHost, msg.DstPort)
+	ui.PrintInfo(
+		"Creating %s Port Forwarding %s:%d->%s:%d",
+		strings.ToUpper(msg.Protocol),
+		msg.SrcHost,
+		msg.SrcPort,
+		msg.DstHost,
+		msg.DstPort)
 
 	notifier := make(chan error, 1)
 	defer close(notifier)
@@ -308,7 +345,13 @@ func handleLocalForward(_ *server, ui UserInterface, sshInst *instance.Config, a
 	}
 }
 
-func handleReverseForward(_ *server, ui UserInterface, sshInst *instance.Config, arg string, remove bool, udp bool) error {
+func handleReverseForward(
+	_ *server,
+	ui UserInterface,
+	sshInst *instance.Config,
+	arg string,
+	remove bool,
+	udp bool) error {
 	protocol := conf.ForwardingProtocolTCP
 	if udp {
 		protocol = conf.ForwardingProtocolUDP

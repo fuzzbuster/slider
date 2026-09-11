@@ -5,15 +5,23 @@ import (
 	"net"
 	"slider/pkg/slog"
 
-	"github.com/armon/go-socks5"
+	"github.com/things-go/go-socks5"
 )
 
+// SOCKS5 library choice, reviewed 2026-09-11:
+//   - things-go/go-socks5 best matches Slider's ServeConn error-returning API
+//     and has the strongest test and CI coverage of the three candidates.
+//   - wzshiming/socks5 implements more of the protocol, including BIND and a
+//     client, but ServeConn does not return errors and its test CI is pending.
+//   - txthinking/socks5 has a reproducible shutdown race, vet failures, and no
+//     equivalent ServeConn API for Slider's tunneled connections.
+//
 // NewServer creates a configured SOCKS5 server instance with logging disabled
 func NewServer() (*socks5.Server, error) {
-	conf := &socks5.Config{
-		Logger: slog.NewDummyLog(),
-	}
-	return socks5.New(conf)
+	server := socks5.NewServer(
+		socks5.WithLogger(socks5.NewLogger(slog.NewDummyLog())),
+	)
+	return server, nil
 }
 
 // LocalServer manages a standalone local SOCKS5 server

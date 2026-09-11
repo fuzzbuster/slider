@@ -23,7 +23,6 @@ func HandleSliderConnect(nc ssh.NewChannel, sess session.Session, srv session.Ap
 		}
 	}()
 
-	// Parse payload
 	var req ConnectRequest
 	if err := json.Unmarshal(nc.ExtraData(), &req); err != nil {
 		_ = nc.Reject(ssh.ConnectionFailed, fmt.Sprintf("failed to parse payload: %v", err))
@@ -31,19 +30,17 @@ func HandleSliderConnect(nc ssh.NewChannel, sess session.Session, srv session.Ap
 	}
 
 	if len(req.Target) == 0 {
-		return sess.RouteChannel(nc, req.ChannelType)
+		err := fmt.Errorf("target path is required")
+		_ = nc.Reject(ssh.ConnectionFailed, err.Error())
+		return err
 	}
 
 	return routeToNextHop(nc, sess, srv, &req)
 }
 
 func routeToNextHop(nc ssh.NewChannel, sess session.Session, srv session.ApplicationServer, req *ConnectRequest) error {
-	proxy := NewProxy(sess, req.Target)
-	nextHopID, remainingTarget, err := proxy.ParsePath()
-	if err != nil {
-		_ = nc.Reject(ssh.ConnectionFailed, err.Error())
-		return err
-	}
+	nextHopID := int(req.Target[0])
+	remainingTarget := req.Target[1:]
 
 	nextHopSession, err := srv.GetSession(nextHopID)
 	if err != nil {
@@ -79,7 +76,6 @@ func routeToNextHop(nc ssh.NewChannel, sess session.Session, srv session.Applica
 		return fmt.Errorf("session %d is not a gateway", nextHopID)
 	}
 
-	// Forward to the next hop
 	fwdReq := ConnectRequest{
 		Target:      remainingTarget,
 		ChannelType: req.ChannelType,

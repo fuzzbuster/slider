@@ -2,19 +2,26 @@ package server
 
 import (
 	"encoding/json"
+	"fmt"
+	"net"
 	"time"
 
 	"slider/pkg/conf"
 	"slider/pkg/interpreter"
 	"slider/pkg/sconn"
+	"slider/pkg/scrypt"
 	"slider/pkg/session"
 	"slider/pkg/slog"
 
 	"golang.org/x/crypto/ssh"
 )
 
-// NewSSHClient establishes an SSH connection as a client (Gateway Mode)
-func (s *server) NewSSHClient(biSession *session.BidirectionalSession) {
+// NewSSHClient establishes an SSH connection as a client (Gateway Mode).
+func (s *server) NewSSHClient(
+	biSession *session.BidirectionalSession,
+	hostKeyCallback ssh.HostKeyCallback,
+	clientSigner ssh.Signer,
+) {
 	netConn := sconn.WsConnToNetConn(biSession.GetWebSocketConn())
 
 	s.DebugWith(
@@ -25,12 +32,14 @@ func (s *server) NewSSHClient(biSession *session.BidirectionalSession) {
 
 	// Determine auth method for outgoing connection
 	var authMethods []ssh.AuthMethod
-	if s.authOn {
-		// When --auth is enabled, authenticate using server's public key
+	if clientSigner != nil {
+		authMethods = append(authMethods, ssh.PublicKeys(clientSigner))
+	} else if s.authOn {
 		authMethods = append(authMethods, ssh.PublicKeys(s.serverKey))
 	} else {
 		// No authentication required; use keyboard-interactive fallback for compatibility
-		authMethods = append(authMethods, ssh.KeyboardInteractive(func(user, instruction string, questions []string, echos []bool) (answers []string, err error) {
+		authMethods = append(authMethods, ssh.KeyboardInteractive(func(user, instruction string,
+			questions []string, echos []bool) (answers []string, err error) {
 			return nil, nil
 		}))
 	}
@@ -38,11 +47,12 @@ func (s *server) NewSSHClient(biSession *session.BidirectionalSession) {
 	sshConfig := &ssh.ClientConfig{
 		User:            "slider-server", // Identify as a server
 		Auth:            authMethods,
-		HostKeyCallback: ssh.InsecureIgnoreHostKey(), // TODO: Verify host key if needed?
+		HostKeyCallback: hostKeyCallback,
 		ClientVersion:   "SSH-slider-server-client",
 	}
 
-	cConn, newChan, reqChan, err := ssh.NewClientConn(netConn, biSession.GetWebSocketConn().RemoteAddr().String(), sshConfig)
+	cConn, newChan, reqChan, err := ssh.NewClientConn(netConn,
+		biSession.GetWebSocketConn().RemoteAddr().String(), sshConfig)
 	if err != nil {
 		s.DErrorWith("Failed to establish SSH client connection", slog.F("err", err))
 		if biSession.GetNotifier() != nil {
@@ -54,8 +64,10 @@ func (s *server) NewSSHClient(biSession *session.BidirectionalSession) {
 	// Identify ourselves to the upstream server
 	interp, iErr := interpreter.NewInterpreter()
 	if iErr == nil {
+		processInfo := interp.ProcessInfo
 		clientInfo := &interpreter.Info{
 			BaseInfo: interp.BaseInfo,
+			Process:  &processInfo,
 			Identity: s.GetServerIdentity(), // Include our identity (fingerprint:port)
 		}
 		payload, _ := json.Marshal(clientInfo)
@@ -67,6 +79,9 @@ func (s *server) NewSSHClient(biSession *session.BidirectionalSession) {
 			if mErr := json.Unmarshal(reply, &ciAnswer); mErr == nil {
 				if ciAnswer.User != "" {
 					biSession.SetPeerInfo(ciAnswer.BaseInfo)
+				}
+				if ciAnswer.Process != nil {
+					biSession.SetPeerProcessInfo(*ciAnswer.Process)
 				}
 				// Store peer's identity if provided
 				if ciAnswer.Identity != "" {
@@ -137,6 +152,30 @@ func (s *server) NewSSHClient(biSession *session.BidirectionalSession) {
 
 	// Block until connection closes
 	_ = client.Wait()
+}
+
+func hostKeyCallbackForFingerprint(expected string) ssh.HostKeyCallback {
+	return func(_ string, _ net.Addr, key ssh.PublicKey) error {
+		fingerprint, err := scrypt.GenerateFingerprint(key)
+		if err != nil {
+			return err
+		}
+		if fingerprint != expected {
+			return fmt.Errorf("SSH host fingerprint mismatch")
+		}
+		return nil
+	}
+}
+
+func (s *server) authorizedHostKey(_ string, _ net.Addr, key ssh.PublicKey) error {
+	fingerprint, err := scrypt.GenerateFingerprint(key)
+	if err != nil {
+		return err
+	}
+	if _, _, ok := s.getCertByFingerprint(fingerprint); !ok {
+		return fmt.Errorf("SSH host key is not authorized")
+	}
+	return nil
 }
 
 // EventRequest defines the payload for slider-event request

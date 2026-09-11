@@ -1,0 +1,77 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <meta name="color-scheme" content="dark light" />
+    <title>Slider Authentication</title>
+    <script type="module" crossorigin src="/console/assets/auth-CryBph4P.js"></script>
+    <link rel="modulepreload" crossorigin href="/console/assets/theme-CM5bcWQG.js">
+    <link rel="stylesheet" crossorigin href="/console/assets/theme-DSzoMD7x.css">
+    <link rel="stylesheet" crossorigin href="/console/assets/auth-OBl4yV8z.css">
+  </head>
+  <body
+    data-auth-path="{{.AuthPath}}"
+    data-auth-login-path="{{.AuthLoginPath}}"
+    data-console-path="/console"
+  >
+    <button
+      class="icon-button theme-toggle"
+      id="themeToggle"
+      type="button"
+      aria-label="Use light theme"
+      title="Use light theme"
+    >
+      <span data-theme-icon="light">
+        <i data-lucide="sun"></i>
+      </span>
+      <span data-theme-icon="dark">
+        <i data-lucide="moon"></i>
+      </span>
+    </button>
+
+    <main class="auth-shell">
+      <section class="auth-panel" aria-labelledby="authTitle">
+        <div class="brand">
+          <span class="brand-mark" aria-hidden="true">S</span>
+          <h1 id="authTitle">Slider</h1>
+        </div>
+        <p class="subtitle">Authenticate to access the console</p>
+
+        <div id="error" class="error" role="alert"></div>
+
+        <form id="loginForm">
+          <div class="form-group">
+            <label for="fingerprint">Certificate Fingerprint</label>
+            <input
+              type="text"
+              id="fingerprint"
+              name="fingerprint"
+              placeholder="SHA256:..."
+              autocomplete="off"
+              required
+              autofocus
+            />
+          </div>
+
+          <div class="form-group">
+            <label for="privateKey">Certificate Private Key</label>
+            <input
+              type="password"
+              id="privateKey"
+              name="privateKey"
+              placeholder="Base64 private key"
+              autocomplete="off"
+              required
+            />
+          </div>
+
+          <button class="submit-button" type="submit" id="submitBtn">
+            Authenticate
+          </button>
+        </form>
+      </section>
+    </main>
+
+  </body>
+</html>

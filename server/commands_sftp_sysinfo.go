@@ -2,8 +2,11 @@ package server
 
 import (
 	"fmt"
-	"slider/pkg/spath"
+	"strconv"
 	"text/tabwriter"
+
+	"slider/pkg/interpreter"
+	"slider/pkg/spath"
 )
 
 const (
@@ -31,6 +34,15 @@ func (c *SftpSysInfoCommand) Run(execCtx *ExecutionContext, args []string) error
 	}
 
 	remoteInfo := sftpCtx.remoteInfo
+	processInfo := interpreter.SanitizeProcessInfo(sftpCtx.processInfo)
+	processName := "--"
+	if processInfo.Name != "" {
+		processName = processInfo.Name
+	}
+	processID := "--"
+	if processInfo.PID != 0 {
+		processID = strconv.FormatUint(uint64(processInfo.PID), 10)
+	}
 
 	ui := execCtx.UI()
 	tw := new(tabwriter.Writer)
@@ -41,10 +53,13 @@ func (c *SftpSysInfoCommand) Run(execCtx *ExecutionContext, args []string) error
 	_, _ = fmt.Fprintf(tw, "\tSystem\t%s\t\n", remoteInfo.System)
 	_, _ = fmt.Fprintf(tw, "\tArchitecture\t%s\t\n", remoteInfo.Arch)
 	_, _ = fmt.Fprintf(tw, "\tUser\t%s\t\n", remoteInfo.User)
+	_, _ = fmt.Fprintf(tw, "\tProcess Name\t%s\t\n", processName)
+	_, _ = fmt.Fprintf(tw, "\tPID\t%s\t\n", processID)
 	_, _ = fmt.Fprintf(tw, "\tBinary Path\t%s\t\n", remoteInfo.SliderDir)
 	_, _ = fmt.Fprintf(tw, "\tLaunch Path\t%s\t\n", remoteInfo.LaunchDir)
 	_, _ = fmt.Fprintf(tw, "\tHome Directory\t%s\t\n", spath.NormalizeToSystemPath(remoteInfo.HomeDir, remoteInfo.System))
-	_, _ = fmt.Fprintf(tw, "\tWorking Directory\t%s\t\n", spath.NormalizeToSystemPath(sftpCtx.GetRemoteCwd(), remoteInfo.System))
+	_, _ = fmt.Fprintf(tw, "\tWorking Directory\t%s\t\n",
+		spath.NormalizeToSystemPath(sftpCtx.GetRemoteCwd(), remoteInfo.System))
 	_, _ = fmt.Fprintln(tw)
 
 	return tw.Flush()

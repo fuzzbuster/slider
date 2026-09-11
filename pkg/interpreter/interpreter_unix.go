@@ -20,6 +20,7 @@ const (
 
 type Interpreter struct {
 	BaseInfo
+	ProcessInfo       ProcessInfo
 	Shell             string   `json:"Shell"`
 	ShellSeparator    string   `json:"ShellSeparator"`
 	ShellArgs         []string `json:"ShellArgs"`
@@ -31,15 +32,12 @@ type Interpreter struct {
 }
 
 type unixPty struct {
-	file *os.File
-	cmd  *exec.Cmd
+	*os.File
+	cmd *exec.Cmd
 }
 
-func (p *unixPty) Read(b []byte) (n int, err error)  { return p.file.Read(b) }
-func (p *unixPty) Write(b []byte) (n int, err error) { return p.file.Write(b) }
-func (p *unixPty) Close() error                      { return p.file.Close() }
 func (p *unixPty) Resize(cols, rows uint32) error {
-	return pty.Setsize(p.file, &pty.Winsize{Cols: uint16(cols), Rows: uint16(rows)})
+	return pty.Setsize(p.File, &pty.Winsize{Cols: uint16(cols), Rows: uint16(rows)})
 }
 func (p *unixPty) Wait() error {
 	return p.cmd.Wait()
@@ -50,7 +48,7 @@ func StartPty(cmd *exec.Cmd, cols, rows uint32) (Pty, error) {
 	if err != nil {
 		return nil, err
 	}
-	return &unixPty{file: f, cmd: cmd}, nil
+	return &unixPty{File: f, cmd: cmd}, nil
 }
 
 var (
@@ -115,6 +113,7 @@ func NewInterpreter() (*Interpreter, error) {
 
 	i.Arch = runtime.GOARCH
 	i.System = runtime.GOOS
+	i.ProcessInfo = currentProcessInfo()
 	i.User = "--"
 	i.HomeDir = "/"
 	if u, uErr := user.Current(); uErr == nil {
@@ -150,16 +149,10 @@ func NewInterpreter() (*Interpreter, error) {
 		return nil, fmt.Errorf("can not find a suitable shell on system %s", i.System)
 	}
 
-	if i.Shell == "" {
-		return nil, fmt.Errorf("can not find a suitable shell on system %s", i.System)
-	}
-
-	// Capture binary path
 	if exe, err := os.Executable(); err == nil {
 		i.SliderDir = exe
 	}
 
-	// Capture initial working directory
 	var err error
 	i.LaunchDir, err = os.Getwd()
 	if err != nil {

@@ -20,14 +20,13 @@ const (
 )
 
 // SSHCommand implements the 'ssh' command
-type SSHCommand struct{}
+type SSHCommand struct{ BaseCommand }
 
-func (c *SSHCommand) Name() string             { return sshCmd }
-func (c *SSHCommand) Description() string      { return sshDesc }
-func (c *SSHCommand) Usage() string            { return sshUsage }
-func (c *SSHCommand) IsRemoteCompletion() bool { return false }
+func (c *SSHCommand) Name() string        { return sshCmd }
+func (c *SSHCommand) Description() string { return sshDesc }
+func (c *SSHCommand) Usage() string       { return sshUsage }
 func (c *SSHCommand) Run(ctx *ExecutionContext, args []string) error {
-	svr := ctx.getServer()
+	svr := ctx.server
 	ui := ctx.UI()
 
 	sshFlags := pflag.NewFlagSet(sshCmd, pflag.ContinueOnError)
@@ -143,7 +142,7 @@ func (c *SSHCommand) Run(ctx *ExecutionContext, args []string) error {
 		}
 	} else {
 		// Remote Strategy
-		key := fmt.Sprintf("ssh:%d:%v", uSess.GatewayID, uSess.Path)
+		key := uSess.stateKey(remoteStateSSH)
 		svr.remoteSessionsMutex.Lock()
 		if _, ok := svr.remoteSessions[key]; !ok {
 			svr.remoteSessions[key] = &RemoteSessionState{}

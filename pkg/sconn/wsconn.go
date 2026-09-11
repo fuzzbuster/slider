@@ -27,9 +27,7 @@ func (w *wsConn) Read(p []byte) (int, error) {
 	var n int
 	dl := len(p)
 	if len(src) > dl {
-		// Copy as many bytes as fit into "dest"
 		n = copy(p, src[:dl])
-		// Calculate reminder bytes and copy them into buffer
 		r := src[dl:]
 		w.buff = make([]byte, len(r))
 		copy(w.buff, r)
@@ -55,7 +53,6 @@ func (w *wsConn) SetDeadline(t time.Time) error {
 }
 
 // WsConnToNetConn converts a websocket.Conn into a net.Conn
-// Requires implementing Read, Write and SetDeadLine methods
 func WsConnToNetConn(websocketConn *websocket.Conn) net.Conn {
 	w := wsConn{
 		Conn: websocketConn,

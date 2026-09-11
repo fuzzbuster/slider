@@ -1,16 +1,13 @@
 package server
 
 import (
-	"context"
 	"errors"
 	"fmt"
 	"os"
-	"os/exec"
 	"slices"
 	"strings"
 
 	"slider/pkg/completion"
-	"slider/pkg/conf"
 	"slider/pkg/escseq"
 	"slider/pkg/interpreter"
 	"slider/pkg/session"
@@ -24,6 +21,7 @@ type SftpConsoleOptions struct {
 	Session         *session.BidirectionalSession
 	SftpClient      *sftp.Client
 	RemoteInfo      interpreter.BaseInfo
+	ProcessInfo     interpreter.ProcessInfo
 	targetSessionID int64
 	LatestDir       string
 }
@@ -34,6 +32,7 @@ func (s *server) newSftpConsoleWithInterpreter(ui *Console, opts SftpConsoleOpti
 	bSession := opts.Session
 	sftpClient := opts.SftpClient
 	remoteInfo := opts.RemoteInfo
+	processInfo := interpreter.SanitizeProcessInfo(opts.ProcessInfo)
 	targetSessionID := opts.targetSessionID
 	latestDir := opts.LatestDir
 
@@ -99,6 +98,7 @@ func (s *server) newSftpConsoleWithInterpreter(ui *Console, opts SftpConsoleOpti
 		remoteCwd:        &remoteCwd,
 		localInterpreter: s.serverInterpreter,
 		remoteInfo:       remoteInfo,
+		processInfo:      processInfo,
 		targetID:         targetSessionID,
 	}
 
@@ -161,7 +161,7 @@ func (s *server) newSftpConsoleWithInterpreter(ui *Console, opts SftpConsoleOpti
 				if len(after) > 0 {
 					fullCommand := []string{after}
 					fullCommand = append(fullCommand, args...)
-					s.notConsoleCommandWithDir(fullCommand, *sftpCtx.localCwd)
+					s.notConsoleCommandWithDir(ui, fullCommand, *sftpCtx.localCwd)
 					continue
 				}
 			}
@@ -235,33 +235,6 @@ func (ctx *SftpCommandContext) getSFTPPrompt() string {
 
 }
 
-// notConsoleCommandWithDir executes a local command from a specified working directory (SFTP-specific)
-func (s *server) notConsoleCommandWithDir(fCmd []string, workingDir string) {
-	// If a Shell was not set, just return
-	if s.serverInterpreter.Shell == "" {
-		s.console.PrintError("No Shell set")
-		return
-	}
-
-	// Else, we'll try to execute the command locally from the specified directory
-	s.console.PrintWarn("Executing local Command: %s", fCmd)
-	fCmd = append(s.serverInterpreter.ShellExecArgs, strings.Join(fCmd, " "))
-
-	// Force 10s timeout just in case:
-	// - An interactive command is executed
-	// - The command takes a long time to complete
-	ctx, cancel := context.WithTimeout(context.Background(), conf.Timeout)
-	defer cancel()
-	cmd := exec.CommandContext(ctx, s.serverInterpreter.Shell, fCmd...)
-	cmd.Dir = workingDir // Set working directory
-	cmd.Stdout = s.console.Term
-	cmd.Stderr = s.console.Term
-	if err := cmd.Run(); err != nil {
-		s.console.PrintError("%v", err)
-	}
-	s.console.Println("")
-}
-
 func fieldsWithQuotes(input string) []string {
 	quoted := false
 	fields := strings.FieldsFunc(input, func(r rune) bool {
@@ -290,7 +263,10 @@ func fieldsWithQuotes(input string) []string {
 	return newFields
 }
 
-func (c *Console) setSftpConsoleAutoComplete(registry *CommandRegistry, sftpCtx *SftpCommandContext, sftpClient *sftp.Client) {
+func (c *Console) setSftpConsoleAutoComplete(
+	registry *CommandRegistry,
+	sftpCtx *SftpCommandContext,
+	sftpClient *sftp.Client) {
 	// Get command list from registry for autocompletion
 	cmdList := registry.List()
 
@@ -351,7 +327,7 @@ func (c *Console) setSftpConsoleAutoComplete(registry *CommandRegistry, sftpCtx 
 			system = sftpCtx.getContextSystem(true)
 			homeDir = sftpCtx.getContextHomeDir(true)
 
-			completer := completion.NewRemotePathCompleter(sftpClient)
+			var completer completion.PathCompleter = completion.NewRemotePathCompleter(sftpClient)
 			matches, commonPrefix, err = completer.Complete(currentArg, remoteCwd, system, homeDir)
 		} else {
 			// Local path completion
@@ -359,7 +335,7 @@ func (c *Console) setSftpConsoleAutoComplete(registry *CommandRegistry, sftpCtx 
 			system = sftpCtx.getContextSystem(false)
 			homeDir = sftpCtx.getContextHomeDir(false)
 
-			completer := completion.NewLocalPathCompleter()
+			var completer completion.PathCompleter = completion.NewLocalPathCompleter()
 			matches, commonPrefix, err = completer.Complete(currentArg, localCwd, system, homeDir)
 		}
 

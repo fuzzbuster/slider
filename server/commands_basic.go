@@ -8,46 +8,44 @@ import (
 
 const (
 	// Console Basic Commands
-	bgCmd    = "bg"
-	bgDesc   = "Puts Console into background and returns to logging output"
-	exitCmd  = "exit"
-	exitDesc = "Exits Console and terminates the Server"
-	helpCmd  = "help"
-	helpDesc = "Shows this output"
+	bgCmd     = "bg"
+	bgDesc    = "Leaves Console without terminating the Server"
+	exitCmd   = "exit"
+	exitDesc  = "Exits Console (terminates the Server from the local Console)"
+	helpCmd   = "help"
+	helpDesc  = "Shows this output"
+	clearCmd  = "clear"
+	clearDesc = "Clears the console"
 )
 
 // BgCommand implements the 'bg' command
-type BgCommand struct{}
+type BgCommand struct{ BaseCommand }
 
-func (c *BgCommand) Name() string             { return bgCmd }
-func (c *BgCommand) Description() string      { return bgDesc }
-func (c *BgCommand) Usage() string            { return bgCmd }
-func (c *BgCommand) IsRemoteCompletion() bool { return false }
-func (c *BgCommand) Run(ctx *ExecutionContext, _ []string) error {
-	ctx.UI().PrintlnGreyOut("Logging...")
+func (c *BgCommand) Name() string        { return bgCmd }
+func (c *BgCommand) Description() string { return bgDesc }
+func (c *BgCommand) Usage() string       { return bgCmd }
+func (c *BgCommand) Run(_ *ExecutionContext, _ []string) error {
 	return ErrBackgroundConsole
 }
 
 // ExitCommand implements the 'exit' command
-type ExitCommand struct{}
+type ExitCommand struct{ BaseCommand }
 
-func (c *ExitCommand) Name() string             { return exitCmd }
-func (c *ExitCommand) Description() string      { return exitDesc }
-func (c *ExitCommand) Usage() string            { return exitCmd }
-func (c *ExitCommand) IsRemoteCompletion() bool { return false }
+func (c *ExitCommand) Name() string        { return exitCmd }
+func (c *ExitCommand) Description() string { return exitDesc }
+func (c *ExitCommand) Usage() string       { return exitCmd }
 func (c *ExitCommand) Run(_ *ExecutionContext, _ []string) error {
 	return ErrExitConsole
 }
 
 // HelpCommand implements the 'help' command
-type HelpCommand struct{}
+type HelpCommand struct{ BaseCommand }
 
-func (c *HelpCommand) Name() string             { return helpCmd }
-func (c *HelpCommand) Description() string      { return helpDesc }
-func (c *HelpCommand) Usage() string            { return helpCmd }
-func (c *HelpCommand) IsRemoteCompletion() bool { return false }
+func (c *HelpCommand) Name() string        { return helpCmd }
+func (c *HelpCommand) Description() string { return helpDesc }
+func (c *HelpCommand) Usage() string       { return helpCmd }
 func (c *HelpCommand) Run(ctx *ExecutionContext, _ []string) error {
-	svr := ctx.getServer()
+	svr := ctx.server
 	ui := ctx.UI()
 
 	tw := new(tabwriter.Writer)
@@ -73,5 +71,15 @@ func (c *HelpCommand) Run(ctx *ExecutionContext, _ []string) error {
 	_, _ = fmt.Fprintf(tw, "\t%s\t%s\t\n", "!command", "Execute \"command\" in local shell (non-interactive)")
 	_, _ = fmt.Fprintln(tw)
 	_ = tw.Flush()
+	return nil
+}
+
+type ClearCommand struct{ BaseCommand }
+
+func (c *ClearCommand) Name() string        { return clearCmd }
+func (c *ClearCommand) Description() string { return clearDesc }
+func (c *ClearCommand) Usage() string       { return clearCmd }
+func (c *ClearCommand) Run(ctx *ExecutionContext, _ []string) error {
+	ctx.UI().clearScreen()
 	return nil
 }

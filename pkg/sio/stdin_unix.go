@@ -27,11 +27,6 @@ func CopyInteractiveCancellable(dst io.Writer, src io.Reader, done <-chan struct
 
 	if !isFile {
 		// Fallback for non-file readers: blocking copy
-		// We still use os.Stdin as a last resort if it matches what was originally intended
-		// but ideally we should just copy from src.
-		go func() {
-			<-done
-		}()
 		_, _ = io.Copy(dst, src)
 		return
 	}

@@ -35,6 +35,38 @@ $(BUILD_DIR):
 .PHONY: all
 all: clean $(BUILD_DIR) macos-arm64 macos-amd64 windows-x86 windows-amd64 windows-arm64 linux-x86 linux-amd64 linux-arm64
 
+.PHONY: test test-race test-e2e test-e2e-web test-e2e-extended web-build web-typecheck web-check
+test:
+	go test ./...
+
+test-race:
+	go test -race ./...
+
+web-build:
+	npm run build:web
+
+web-typecheck:
+	npm run typecheck:web
+
+web-check: web-typecheck web-build
+	@if ! git diff --quiet -- server/web/dist || \
+		test -n "$$(git ls-files --others --exclude-standard -- server/web/dist)"; then \
+		echo "server/web/dist is out of sync; run 'make web-build' and stage the result"; \
+		git status --short -- server/web/dist; \
+		exit 1; \
+	fi
+
+test-e2e:
+	go test -tags=e2e -count=1 ./e2e
+
+test-e2e-web:
+	npm ci
+	npx playwright install chromium
+	npm run test:e2e:web
+
+test-e2e-extended:
+	SLIDER_E2E_LARGE=1 SLIDER_E2E_INTERACTIVE=1 go test -tags=e2e -count=1 ./e2e
+
 # Build for common platforms for quick testing
 .PHONY: basic
 basic: $(BUILD_DIR) macos-amd64 linux-amd64 windows-x86
@@ -127,7 +159,7 @@ endif
 
 # GitHub Release
 .PHONY: github-release
-github-release:
+github-release: web-check
 	@if [ -z "$(GITHUB_TOKEN)" ]; then \
 		echo "Error: GITHUB_TOKEN environment variable is not set."; \
 		echo "Please export your GitHub Personal Access Token:"; \
@@ -139,6 +171,6 @@ github-release:
 
 # Dry Run Release (Snapshot)
 .PHONY: dry-release
-dry-release:
+dry-release: web-check
 	@echo "Running Dry Run Release (Snapshot)..."
 	export GOVERSION=$(shell go version | awk '{print $$3}') && goreleaser release --clean --config .github/goreleaser.yml --skip=publish --snapshot

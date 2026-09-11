@@ -8,11 +8,13 @@ import (
 )
 
 const (
-	AuthPath       = "/auth"
-	AuthLoginPath  = AuthPath + "/token"
-	AuthLogoutPath = AuthPath + "/logout"
-	ConsolePath    = "/console"
-	ConsoleWsPath  = ConsolePath + "/ws"
+	AuthPath          = "/auth"
+	AuthChallengePath = AuthPath + "/challenge"
+	AuthLoginPath     = AuthPath + "/token"
+	AuthLogoutPath    = AuthPath + "/logout"
+	ConsolePath       = "/console"
+	ConsoleAssetsPath = ConsolePath + "/assets/"
+	ConsoleWsPath     = ConsolePath + "/ws"
 )
 
 // RouterConfig holds options for enabling/disabling endpoints
@@ -67,12 +69,7 @@ func versionHandler(cfg *RouterConfig) http.HandlerFunc {
 			w.Header().Add("server", cfg.ServerHeader)
 		}
 		w.Header().Add("Content-Type", "application/json")
-		vRes, mErr := json.Marshal(HttpVersionResponse)
-		if mErr != nil {
-			w.WriteHeader(http.StatusInternalServerError)
-			_, _ = w.Write([]byte("Failed to process Version"))
-			return
-		}
+		vRes, _ := json.Marshal(HttpVersionResponse)
 		_, _ = w.Write(vRes)
 	}
 }
@@ -110,16 +107,12 @@ func templateHandler(cfg *RouterConfig) http.HandlerFunc {
 			}
 		}
 
-		// Redirect to Console if enabled and no auth required
-		if cfg.ConsoleOn && !cfg.AuthOn {
-			w.Header().Add("Location", ConsolePath)
-			w.WriteHeader(http.StatusFound)
-			return
-		}
-
-		// Redirect to Auth if Console enabled and auth required
-		if cfg.ConsoleOn && cfg.AuthOn {
-			w.Header().Add("Location", AuthPath)
+		if cfg.ConsoleOn {
+			location := ConsolePath
+			if cfg.AuthOn {
+				location = AuthPath
+			}
+			w.Header().Add("Location", location)
 			w.WriteHeader(http.StatusFound)
 			return
 		}

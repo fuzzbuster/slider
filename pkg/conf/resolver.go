@@ -34,6 +34,5 @@ func CustomResolver(cDNS string, host string) (string, error) {
 		return "", fmt.Errorf("failed to resolve host %s: %v", host, rErr)
 	}
 
-	// Use the first IP address returned by the resolver
 	return rIP[0], nil
 }

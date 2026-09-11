@@ -22,19 +22,17 @@ func HandleForwardedUDPChannel(
 	sessionID int64,
 	protocol string,
 ) error {
-	var tcpIpMsg types.TcpIpChannelMsg
 	customMsg := &types.CustomTcpIpChannelMsg{}
 
 	// UDP reverse forward from client (always CustomTcpIpChannelMsg format)
-	if jErr := json.Unmarshal(nc.ExtraData(), customMsg); jErr == nil && customMsg.TcpIpChannelMsg != nil {
-		tcpIpMsg = *customMsg.TcpIpChannelMsg
-	} else {
+	if jErr := json.Unmarshal(nc.ExtraData(), customMsg); jErr != nil || customMsg.TcpIpChannelMsg == nil {
 		logger.ErrorWith("Failed to unmarshal forwarded-udp data",
 			slog.F("session_id", sessionID),
 			slog.F("err", jErr))
 		_ = nc.Reject(ssh.UnknownChannelType, "Failed to decode forwarded-udp data")
 		return fmt.Errorf("failed to unmarshal forwarded-udp data: %w", jErr)
 	}
+	tcpIpMsg := customMsg.TcpIpChannelMsg
 
 	logger.DebugWith("Forwarded-udp channel request",
 		slog.F("session_id", sessionID),
@@ -55,9 +53,7 @@ func HandleForwardedUDPChannel(
 	go ssh.DiscardRequests(requests)
 
 	// Dial the local destination (Server side)
-	dstHost := tcpIpMsg.DstHost
-	dstPort := tcpIpMsg.DstPort
-	host := net.JoinHostPort(dstHost, strconv.Itoa(int(dstPort)))
+	host := net.JoinHostPort(tcpIpMsg.DstHost, strconv.Itoa(int(tcpIpMsg.DstPort)))
 
 	udpConn, cErr := net.Dial(protocol, host)
 	if cErr != nil {

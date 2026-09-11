@@ -72,11 +72,8 @@ func NewServerKeyPair() (*ServerKeyPair, error) {
 }
 
 func ServerKeyPairFromFile(keyPath string) (*ServerKeyPair, error) {
-	var serverKeyPair *ServerKeyPair
-	var err error
-
 	if _, sErr := os.Stat(keyPath); os.IsNotExist(sErr) {
-		serverKeyPair, err = NewServerKeyPair()
+		serverKeyPair, err := NewServerKeyPair()
 		if err != nil {
 			return nil, err
 		}
@@ -96,15 +93,18 @@ func ServerKeyPairFromFile(keyPath string) (*ServerKeyPair, error) {
 		if _, wErr := file.Write(keyPairBytes); wErr != nil {
 			return nil, fmt.Errorf("failed to save keypair in %s - %v", keyPath, wErr)
 		}
-	} else {
-		file, oErr := os.ReadFile(keyPath)
-		if oErr != nil {
-			return nil, fmt.Errorf("failed to open file %s", keyPath)
-		}
 
-		if jErr := json.Unmarshal(file, &serverKeyPair); jErr != nil {
-			return nil, fmt.Errorf("failed to unmarshal file - %v", jErr)
-		}
+		return serverKeyPair, nil
+	}
+
+	file, oErr := os.ReadFile(keyPath)
+	if oErr != nil {
+		return nil, fmt.Errorf("failed to open file %s", keyPath)
+	}
+
+	var serverKeyPair *ServerKeyPair
+	if jErr := json.Unmarshal(file, &serverKeyPair); jErr != nil {
+		return nil, fmt.Errorf("failed to unmarshal file - %v", jErr)
 	}
 
 	return serverKeyPair, nil
@@ -127,14 +127,12 @@ func SignerFromKey(key string) (ssh.Signer, error) {
 		return nil, fmt.Errorf("failed to parse private key: %v", prErr)
 	}
 
-	return privateKeySigner, prErr
+	return privateKeySigner, nil
 }
 
 func GenerateFingerprint(publicKey ssh.PublicKey) (string, error) {
 	h := sha256.New()
-	if _, hErr := h.Write(publicKey.Marshal()); hErr != nil {
-		return "", fmt.Errorf("failed to generate hash - %v", hErr)
-	}
+	h.Write(publicKey.Marshal())
 
 	return base64.RawStdEncoding.EncodeToString(h.Sum(nil)), nil
 }

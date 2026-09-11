@@ -21,7 +21,8 @@ func NewRemotePathCompleter(sftpClient *sftp.Client) *RemotePathCompleter {
 
 // Complete performs remote path completion
 // For remote paths, we need to handle SFTP format conversion
-func (rpc *RemotePathCompleter) Complete(input string, cwd string, system string, homeDir string) ([]string, string, error) {
+func (rpc *RemotePathCompleter) Complete(input string, cwd string,
+	system string, homeDir string) ([]string, string, error) {
 	if rpc.sftpClient == nil {
 		return nil, input, nil
 	}

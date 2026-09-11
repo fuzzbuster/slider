@@ -18,14 +18,13 @@ const (
 )
 
 // ConnectCommand implements the 'connect' command
-type ConnectCommand struct{}
+type ConnectCommand struct{ BaseCommand }
 
-func (c *ConnectCommand) Name() string             { return connectCmd }
-func (c *ConnectCommand) Description() string      { return connectDesc }
-func (c *ConnectCommand) Usage() string            { return connectUsage }
-func (c *ConnectCommand) IsRemoteCompletion() bool { return false }
+func (c *ConnectCommand) Name() string        { return connectCmd }
+func (c *ConnectCommand) Description() string { return connectDesc }
+func (c *ConnectCommand) Usage() string       { return connectUsage }
 func (c *ConnectCommand) Run(ctx *ExecutionContext, args []string) error {
-	svr := ctx.getServer()
+	svr := ctx.server
 	ui := ctx.UI()
 
 	connectFlags := pflag.NewFlagSet(connectCmd, pflag.ContinueOnError)
@@ -36,6 +35,9 @@ func (c *ConnectCommand) Run(ctx *ExecutionContext, args []string) error {
 	cProto := connectFlags.StringP("proto", "p", conf.Proto, "Use custom proto")
 	cTlsCert := connectFlags.StringP("tls-cert", "t", "", "Use custom client TLS certificate")
 	cTlsKey := connectFlags.StringP("tls-key", "k", "", "Use custom client TLS key")
+	cFingerprint := connectFlags.StringP("fingerprint", "f", "", "Expected SSH host fingerprint")
+	cCA := connectFlags.String("ca", "", "CA certificate for server verification")
+	cServerName := connectFlags.String("server-name", "", "Server name for TLS verification")
 	cGateway := connectFlags.BoolP("gateway", "g", false, "Connect to another server in gateway mode")
 	var cCallback *bool
 	if svr.gateway {
@@ -54,6 +56,9 @@ func (c *ConnectCommand) Run(ctx *ExecutionContext, args []string) error {
 			return nil
 		}
 		return pErr
+	}
+	if (*cTlsCert == "") != (*cTlsKey == "") {
+		return fmt.Errorf("--tls-cert and --tls-key must be provided together")
 	}
 
 	// Validate exact args
@@ -74,6 +79,21 @@ func (c *ConnectCommand) Run(ctx *ExecutionContext, args []string) error {
 	} else if cCallback != nil && *cCallback {
 		operation = conf.OperationCallback
 	}
+	if operation == conf.OperationOperator && *cFingerprint == "" {
+		return fmt.Errorf("--gateway requires --fingerprint")
+	}
+	if operation == conf.OperationOperator && (*cCert == 0 || !svr.authOn) {
+		return fmt.Errorf("--gateway requires server authentication and --cert-id")
+	}
+	if operation == conf.OperationCallback && *cCert == 0 {
+		return fmt.Errorf("--callback requires --cert-id")
+	}
+	if operation == conf.OperationCallback && !svr.authOn {
+		return fmt.Errorf("--callback requires server authentication")
+	}
+	if operation != conf.OperationOperator && cu.Scheme != "https" {
+		return fmt.Errorf("listener and callback connections require HTTPS")
+	}
 
 	ui.PrintInfo("Establishing Connection to %s (Timeout: %s)", cu.String(), conf.Timeout)
 
@@ -82,7 +102,21 @@ func (c *ConnectCommand) Run(ctx *ExecutionContext, args []string) error {
 	defer ticker.Stop()
 	timeout := time.After(conf.Timeout)
 
-	go svr.newConnector(cu, notifier, *cCert, *cDNS, *cProto, *cTlsCert, *cTlsKey, operation)
+	go svr.newConnector(
+		cu,
+		notifier,
+		*cCert,
+		*cDNS,
+		*cProto,
+		connectorSecurity{
+			fingerprint: *cFingerprint,
+			caPath:      *cCA,
+			serverName:  *cServerName,
+			tlsCertPath: *cTlsCert,
+			tlsKeyPath:  *cTlsKey,
+		},
+		operation,
+	)
 
 	for {
 		// Priority check: always check notifier first

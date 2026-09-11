@@ -1,6 +1,8 @@
 package instance
 
 import (
+	"encoding/binary"
+	"fmt"
 	"io"
 	"net"
 	"slider/pkg/slog"
@@ -9,6 +11,23 @@ import (
 
 	"golang.org/x/crypto/ssh"
 )
+
+func TestParseSizePayload(t *testing.T) {
+	if _, _, err := ParseSizePayload(make([]byte, 7)); err == nil {
+		t.Fatal("short window-change payload was accepted")
+	}
+
+	payload := make([]byte, 8)
+	binary.BigEndian.PutUint32(payload, 120)
+	binary.BigEndian.PutUint32(payload[4:], 40)
+	cols, rows, err := ParseSizePayload(payload)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if cols != 120 || rows != 40 {
+		t.Fatalf("dimensions = %dx%d, want 120x40", cols, rows)
+	}
+}
 
 func TestInstance(t *testing.T) {
 	logger := slog.NewLogger("TestSSocks")
@@ -41,24 +60,33 @@ func TestInstance(t *testing.T) {
 		}
 
 		instance := New(config)
-		instance.enabled = true
+		listener, err := net.Listen("tcp", "127.0.0.1:0")
+		if err != nil {
+			t.Fatalf("Failed to listen: %v", err)
+		}
+		run := newEndpointRun(listener)
+		instance.run = run
+		instance.port = listener.Addr().(*net.TCPAddr).Port
+		defer run.stop()
 
 		port, err := instance.GetEndpointPort()
 		if err != nil {
 			t.Errorf("Unexpected error: %v", err)
 		}
 
-		if port != 12345 {
-			t.Errorf("Expected port 12345, got %d", port)
+		if port != instance.port {
+			t.Errorf("Expected port %d, got %d", instance.port, port)
 		}
 
-		// Test non-enabled instance
-		instance = New(config)
-		instance.enabled = false
+		// Test non-running instance
+		instance = New(&Config{
+			Logger: logger,
+			port:   12345,
+		})
 
 		_, err = instance.GetEndpointPort()
 		if err == nil {
-			t.Error("Expected error for non-endpoint instance, got nil")
+			t.Error("Expected error for non-running instance, got nil")
 		}
 	})
 
@@ -95,6 +123,7 @@ func TestEndpointIntegration(t *testing.T) {
 	// Create a sftp instance
 	config := &Config{
 		Logger:         logger,
+		EndpointType:   SocksEndpoint,
 		sshSessionConn: mockSSHConn,
 	}
 
@@ -125,6 +154,11 @@ func TestEndpointIntegration(t *testing.T) {
 		t.Error("Config should be enabled after starting")
 	}
 
+	endpointConn, err := net.Dial("tcp", fmt.Sprintf("127.0.0.1:%d", port))
+	if err != nil {
+		t.Fatalf("Failed to connect to endpoint: %v", err)
+	}
+
 	// Stop the endpoint
 	err = instance.Stop()
 	if err != nil {
@@ -145,6 +179,11 @@ func TestEndpointIntegration(t *testing.T) {
 	if instance.IsEnabled() {
 		t.Error("Config should be disabled after stopping")
 	}
+	_ = endpointConn.SetReadDeadline(time.Now().Add(time.Second))
+	if _, err := endpointConn.Read(make([]byte, 1)); err == nil {
+		t.Error("accepted endpoint connection remained open after Stop")
+	}
+	_ = endpointConn.Close()
 
 	// Cleanup
 	_ = clientConn.Close()
@@ -176,7 +215,9 @@ func (m *mockSSHConn) Close() error {
 }
 
 func (m *mockSSHConn) Wait() error {
-	return nil
+	buffer := make([]byte, 1)
+	_, err := m.netConn.Read(buffer)
+	return err
 }
 
 func (m *mockSSHConn) User() string {

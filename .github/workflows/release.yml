@@ -1,0 +1,67 @@
+name: Release
+
+on:
+  push:
+    tags:
+      - 'v*'
+
+permissions:
+  contents: write
+
+jobs:
+  release:
+    name: GoReleaser
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v5
+        with:
+          fetch-depth: 0
+
+      - name: Setup Go
+        uses: actions/setup-go@v6
+        with:
+          go-version-file: go.mod
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+
+      - name: Export Go version
+        run: echo "GOVERSION=$(go version | awk '{print $3}')" >> "$GITHUB_ENV"
+
+      - name: Install dependencies
+        run: |
+          go mod download
+          npm ci
+
+      - name: Verify frontend
+        shell: bash
+        run: |
+          npm run typecheck:web
+          npm run build:web
+          if ! git diff --quiet -- server/web/dist || \
+            [[ -n "$(git ls-files --others --exclude-standard -- server/web/dist)" ]]; then
+            git status --short -- server/web/dist
+            git diff -- server/web/dist
+            exit 1
+          fi
+
+      - name: Run tests
+        run: go test -v ./...
+
+      - name: Setup UPX
+        uses: crazy-max/ghaction-upx@v3
+        with:
+          install-only: true
+
+      - name: Run GoReleaser
+        uses: goreleaser/goreleaser-action@v6
+        with:
+          distribution: goreleaser
+          version: '~> v2'
+          args: release --clean --config .github/goreleaser.yml
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}

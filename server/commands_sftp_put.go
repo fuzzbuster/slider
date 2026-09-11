@@ -158,7 +158,8 @@ func (c *SftpPutCommand) Run(execCtx *ExecutionContext, args []string) error {
 			defer func() { _ = rFile.Close() }()
 
 			// Copy file with progress
-			bytesWritten, cErr := sftpCtx.copyFileWithProgress(lFile, rFile, fileSize, fmt.Sprintf("Upload (%d/%d)", currentFile, fileCount), ui)
+			bytesWritten, cErr := sftpCtx.copyFileWithProgress(lFile, rFile, fileSize,
+				fmt.Sprintf("Upload (%d/%d)", currentFile, fileCount), ui)
 			if cErr != nil {
 				return fmt.Errorf("failed to copy file: %w", cErr)
 			}

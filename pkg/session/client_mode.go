@@ -22,8 +22,8 @@ func (s *BidirectionalSession) AddReversePortForward(
 	bindAddress string,
 	stopChan chan bool,
 ) error {
-	if !s.role.IsAgent() {
-		return fmt.Errorf("reverse port forwarding only available in client mode")
+	if !s.role.IsAgent() && !s.role.IsGateway() {
+		return fmt.Errorf("reverse port forwarding only available in agent or gateway mode")
 	}
 
 	s.fwdMutex.Lock()
@@ -49,20 +49,16 @@ func (s *BidirectionalSession) AddReversePortForward(
 
 // RemoveReversePortForward removes a reverse port forward
 func (s *BidirectionalSession) RemoveReversePortForward(port uint32) error {
-	if !s.role.IsAgent() {
-		return fmt.Errorf("reverse port forwarding only available in client mode")
+	if !s.role.IsAgent() && !s.role.IsGateway() {
+		return fmt.Errorf("reverse port forwarding only available in agent or gateway mode")
 	}
 
 	s.fwdMutex.Lock()
 	defer s.fwdMutex.Unlock()
 
-	pfc, exists := s.revPortFwdMap[port]
+	_, exists := s.revPortFwdMap[port]
 	if !exists {
 		return fmt.Errorf("port forward for port %d not found", port)
-	}
-
-	if pfc.StopChan != nil {
-		close(pfc.StopChan)
 	}
 
 	delete(s.revPortFwdMap, port)

@@ -1,6 +1,25 @@
 package listener
 
-import "testing"
+import (
+	"net/http"
+	"testing"
+)
+
+func TestWebSocketDefaultsAreIndependent(t *testing.T) {
+	firstDialer := NewWebSocketDialer()
+	secondDialer := NewWebSocketDialer()
+	firstDialer.TLSClientConfig.ServerName = "first.example"
+	if secondDialer.TLSClientConfig.ServerName != "" {
+		t.Fatal("WebSocket dialers share TLS configuration")
+	}
+
+	firstUpgrader := NewWebSocketUpgrader()
+	secondUpgrader := NewWebSocketUpgrader()
+	firstUpgrader.CheckOrigin = func(_ *http.Request) bool { return true }
+	if secondUpgrader.CheckOrigin != nil {
+		t.Fatal("WebSocket upgraders share mutable configuration")
+	}
+}
 
 func TestCheckURL(t *testing.T) {
 	// Test cases for URL validation

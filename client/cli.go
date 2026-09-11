@@ -36,6 +36,8 @@ func NewCommand() *cobra.Command {
 		listenerCA    string
 		clientTlsCert string
 		clientTlsKey  string
+		serverCA      string
+		serverName    string
 		jsonLog       bool
 		callerLog     bool
 	)
@@ -51,7 +53,7 @@ to the defined Slider Server.`,
 			// Custom validation for conditional exclusion
 			if !listenerOn {
 				// When not in listener mode, these flags should not be used
-				conditionalFlags := []string{"fingerprint", "http-template",
+				conditionalFlags := []string{"http-template",
 					"http-server-header", "http-redirect", "http-status-code", "http-version",
 					"http-health", "listener-cert", "listener-key", "listener-ca"}
 
@@ -62,7 +64,6 @@ to the defined Slider Server.`,
 				}
 			}
 
-			// Validate argument count
 			if !listenerOn && len(args) != 1 {
 				return fmt.Errorf("client requires exactly one valid server address as an argument (unless in --listener mode)")
 			}
@@ -70,7 +71,6 @@ to the defined Slider Server.`,
 				return fmt.Errorf("server address cannot be provided in --listener mode")
 			}
 
-			// Build configuration from flags
 			cfg := &Config{
 				Verbose:       verbose,
 				Keepalive:     keepalive,
@@ -95,16 +95,16 @@ to the defined Slider Server.`,
 				ListenerCA:    listenerCA,
 				ClientTlsCert: clientTlsCert,
 				ClientTlsKey:  clientTlsKey,
+				ServerCA:      serverCA,
+				ServerName:    serverName,
 				JsonLog:       jsonLog,
 				CallerLog:     callerLog,
 			}
 
-			// Add server URL if provided
 			if len(args) > 0 {
 				cfg.ServerURL = args[0]
 			}
 
-			// Call the RunClient function
 			RunClient(cfg)
 			return nil
 		},
@@ -114,7 +114,7 @@ to the defined Slider Server.`,
 	cmd.Flags().StringVar(&verbose, "verbose", "info", "Adds verbosity [debug|info|warn|error|off]")
 	cmd.Flags().DurationVar(&keepalive, "keepalive", conf.Keepalive, "Sets keepalive interval in seconds")
 	cmd.Flags().BoolVar(&colorless, "colorless", false, "Disables logging colors")
-	cmd.Flags().StringVar(&fingerprint, "fingerprint", "", "Server fingerprint for host verification (listener)")
+	cmd.Flags().StringVar(&fingerprint, "fingerprint", "", "Server SSH fingerprint for host verification")
 	cmd.Flags().StringVar(&key, "key", "", "Private key for authenticating to a Server")
 	cmd.Flags().BoolVar(&listenerOn, "listener", false, "Client will listen for incoming Server connections")
 	cmd.Flags().BoolVar(&beaconOn, "beacon", false, "Client will also act as a Pivot (accepts Agents, connects to Server)")
@@ -124,7 +124,11 @@ to the defined Slider Server.`,
 	cmd.Flags().StringVar(&templatePath, "http-template", "", "Path of a default file to serve (listener)")
 	cmd.Flags().StringVar(&serverHeader, "http-server-header", "", "Sets a server header value (listener)")
 	cmd.Flags().StringVar(&httpRedirect, "http-redirect", "", "Redirects incoming HTTP to given URL (listener)")
-	cmd.Flags().IntVar(&statusCode, "http-status-code", 200, "Template Status code [200|301|302|400|401|403|500|502|503] (listener)")
+	cmd.Flags().IntVar(
+		&statusCode,
+		"http-status-code",
+		200,
+		"Template Status code [200|301|302|400|401|403|500|502|503] (listener)")
 	cmd.Flags().BoolVar(&httpVersion, "http-version", false, "Enables /version HTTP path")
 	cmd.Flags().BoolVar(&httpHealth, "http-health", false, "Enables /health HTTP path")
 	cmd.Flags().StringVar(&customDNS, "dns", "", "Uses custom DNS server <host[:port]> for resolving server address")
@@ -134,6 +138,8 @@ to the defined Slider Server.`,
 	cmd.Flags().StringVar(&listenerCA, "listener-ca", "", "CA for verifying server certificates (mTLS)")
 	cmd.Flags().StringVar(&clientTlsCert, "tls-cert", "", "TLS client Certificate")
 	cmd.Flags().StringVar(&clientTlsKey, "tls-key", "", "TLS client Key")
+	cmd.Flags().StringVar(&serverCA, "server-ca", "", "CA certificate for verifying the server")
+	cmd.Flags().StringVar(&serverName, "server-name", "", "Server name for TLS verification")
 	cmd.Flags().BoolVar(&jsonLog, "json-log", false, "Enables JSON formatted logging")
 	if conf.Version == "development" {
 		cmd.Flags().BoolVar(&callerLog, "caller-log", false, "Display caller information in logs")
@@ -146,6 +152,8 @@ to the defined Slider Server.`,
 	cmd.MarkFlagsMutuallyExclusive("listener", "retry")
 	cmd.MarkFlagsMutuallyExclusive("listener", "tls-cert")
 	cmd.MarkFlagsMutuallyExclusive("listener", "tls-key")
+	cmd.MarkFlagsMutuallyExclusive("listener", "server-ca")
+	cmd.MarkFlagsMutuallyExclusive("listener", "server-name")
 
 	// Mark flag dependencies
 	cmd.MarkFlagsRequiredTogether("listener-cert", "listener-key")

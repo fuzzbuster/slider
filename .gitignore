@@ -1,6 +1,16 @@
 .idea
 .vscode
 dist
+!server/web/dist/
+!server/web/dist/**
 build
+artifacts
 server/cmd/build
 client/cmd/build
+node_modules/
+playwright-report/
+test-results/
+.DS_Store
+.trae/*
+!.trae/deepwiki/
+!.trae/deepwiki/**

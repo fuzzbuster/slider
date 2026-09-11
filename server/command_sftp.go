@@ -23,6 +23,7 @@ type SftpCommandContext struct {
 	remoteCwd        *string
 	localInterpreter *interpreter.Interpreter // Reference to local interpreter
 	remoteInfo       interpreter.BaseInfo     // Reference to remote interpreter info
+	processInfo      interpreter.ProcessInfo  // Untrusted diagnostics for sysinfo only
 	targetID         int64                    // The logical session ID (UnifiedID) for this context
 }
 
@@ -30,22 +31,18 @@ type SftpCommandContext struct {
 func (s *server) initSftpRegistry(sess *session.BidirectionalSession) *CommandRegistry {
 	registry := NewCommandRegistry()
 
-	// Register basic commands
 	registry.Register(&SftpHelpCommand{})
 	registry.Register(&SftpExitCommand{})
 
-	// Register pwd commands
 	registry.Register(&SftpPwdCommand{isRemote: true})
 	registry.RegisterAlias("getwd", pwdCmd)
 	registry.Register(&SftpPwdCommand{isRemote: false})
 	registry.RegisterAlias("lgetwd", lPwdCmd)
 
-	// Register cd commands
 	registry.Register(&SftpCdCommand{isRemote: true})
 	registry.RegisterAlias("chdir", cdCmd)
 	registry.Register(&SftpCdCommand{isRemote: false})
 
-	// Register ls commands
 	registry.Register(&SftpLsCommand{isRemote: true})
 	registry.RegisterAlias("dir", lsCmd)
 	registry.RegisterAlias("list", lsCmd)
@@ -53,41 +50,33 @@ func (s *server) initSftpRegistry(sess *session.BidirectionalSession) *CommandRe
 	registry.RegisterAlias("ldir", lLsCmd)
 	registry.RegisterAlias("llist", lLsCmd)
 
-	// Register mkdir commands
 	registry.Register(&SftpMkdirCommand{isRemote: true})
 	registry.Register(&SftpMkdirCommand{isRemote: false})
 
-	// Register rm command (remote only)
 	registry.Register(&SftpRmCommand{})
 	registry.RegisterAlias("del", rmCmd)
 	registry.RegisterAlias("delete", rmCmd)
 
-	// Register stat command (remote only)
 	registry.Register(&SftpStatCommand{})
 	registry.RegisterAlias("info", statCmd)
 
-	// Register sysinfo command
 	registry.Register(&SftpSysInfoCommand{})
 
-	// Register mv command (remote only)
 	registry.Register(&SftpMvCommand{})
 	registry.RegisterAlias("rename", mvCmd)
 	registry.RegisterAlias("move", mvCmd)
 
-	// Register chmod command (remote only, non-Windows)
+	// chmod is not available on Windows targets.
 	if sess.GetPeerInfo().System != "windows" {
 		registry.Register(&SftpChmodCommand{})
 	}
 
-	// Register get command
 	registry.Register(&SftpGetCommand{})
 	registry.RegisterAlias("download", getCmd)
 
-	// Register put command
 	registry.Register(&SftpPutCommand{})
 	registry.RegisterAlias("upload", putCmd)
 
-	// Register execute command
 	registry.Register(&SftpExecuteCommand{})
 
 	return registry
@@ -206,7 +195,8 @@ func (ctx *SftpCommandContext) getFileIdInfo(entry os.FileInfo, isRemote bool) (
 }
 
 // walkRemoteDir walks a remote directory recursively and calls the callback for each entry
-func (ctx *SftpCommandContext) walkRemoteDir(remotePath, relPath string, callback func(remotePath, relPath string, isDir bool) error) error {
+func (ctx *SftpCommandContext) walkRemoteDir(remotePath, relPath string,
+	callback func(remotePath, relPath string, isDir bool) error) error {
 	// Call callback for the directory itself if relPath is not empty
 	if relPath != "" {
 		if err := callback(remotePath, relPath, true); err != nil {
@@ -245,7 +235,8 @@ func (ctx *SftpCommandContext) walkRemoteDir(remotePath, relPath string, callbac
 }
 
 // copyFileWithProgress copies a file from src to dst with progress reporting
-func (ctx *SftpCommandContext) copyFileWithProgress(src io.Reader, dst io.Writer, totalSize int64, operation string, ui UserInterface) (int64, error) {
+func (ctx *SftpCommandContext) copyFileWithProgress(src io.Reader, dst io.Writer, totalSize int64,
+	operation string, ui UserInterface) (int64, error) {
 	buffer := make([]byte, conf.SFTPBufferSize)
 	var written int64
 	var lastReportedMB int64 = -1
@@ -279,7 +270,9 @@ func (ctx *SftpCommandContext) copyFileWithProgress(src io.Reader, dst io.Writer
 			if currentMB != lastReportedMB || written == totalSize {
 				lastReportedMB = currentMB
 				progress := float64(written) / float64(totalSize) * 100
-				ui.Printf("%s%s: %.1f%% (%.2f MB / %.2f MB)", eraseLine, operation, progress, float64(written)/conf.BytesPerMB, float64(totalSize)/conf.BytesPerMB)
+				ui.Printf("%s%s: %.1f%% (%.2f MB / %.2f MB)",
+					eraseLine, operation, progress, float64(written)/conf.BytesPerMB,
+					float64(totalSize)/conf.BytesPerMB)
 			}
 		}
 		if er != nil {
@@ -293,7 +286,8 @@ func (ctx *SftpCommandContext) copyFileWithProgress(src io.Reader, dst io.Writer
 }
 
 // walkLocalDir walks a local directory recursively and calls the callback for each entry
-func (ctx *SftpCommandContext) walkLocalDir(localPath, relPath string, callback func(localPath, relPath string, isDir bool) error) error {
+func (ctx *SftpCommandContext) walkLocalDir(localPath, relPath string,
+	callback func(localPath, relPath string, isDir bool) error) error {
 	// Call callback for the directory itself if relPath is not empty
 	if relPath != "" {
 		if err := callback(localPath, relPath, true); err != nil {

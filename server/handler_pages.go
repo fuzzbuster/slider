@@ -3,10 +3,12 @@ package server
 import (
 	"embed"
 	"html/template"
+	"io/fs"
 	"net/http"
+	"sync"
+
 	"slider/pkg/listener"
 	"slider/pkg/slog"
-	"sync"
 )
 
 type consolePageData struct {
@@ -18,18 +20,28 @@ type consolePageData struct {
 }
 
 var (
-	//go:embed templates/*.html
-	templateFS embed.FS
+	//go:embed web/dist
+	webFS embed.FS
 
-	// Template cache
 	templates     *template.Template
 	templatesOnce sync.Once
 	templatesErr  error
-	data          consolePageData
+
+	webRoot, webRootErr = fs.Sub(webFS, "web/dist")
+	webAssetHandler     = http.StripPrefix(listener.ConsolePath+"/", http.FileServer(http.FS(webRoot)))
 )
 
-func init() {
-	data = consolePageData{
+// loadTemplates loads and parses all HTML templates
+func loadTemplates() (*template.Template, error) {
+	templatesOnce.Do(func() {
+		templates, templatesErr = template.ParseFS(webFS, "web/dist/*.html")
+	})
+	return templates, templatesErr
+}
+
+func (s *server) pageData() consolePageData {
+	return consolePageData{
+		AuthOn:         s.authOn,
 		AuthPath:       listener.AuthPath,
 		AuthLoginPath:  listener.AuthLoginPath,
 		AuthLogoutPath: listener.AuthLogoutPath,
@@ -37,12 +49,24 @@ func init() {
 	}
 }
 
-// loadTemplates loads and parses all HTML templates
-func loadTemplates() (*template.Template, error) {
-	templatesOnce.Do(func() {
-		templates, templatesErr = template.ParseFS(templateFS, "templates/*.html")
-	})
-	return templates, templatesErr
+func (s *server) handleConsoleAsset(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodGet && r.Method != http.MethodHead {
+		w.Header().Set("Allow", "GET, HEAD")
+		http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
+		return
+	}
+	if r.URL.Path == listener.ConsoleAssetsPath {
+		http.NotFound(w, r)
+		return
+	}
+	if webRootErr != nil {
+		s.ErrorWith("Failed to load web assets", slog.F("err", webRootErr))
+		http.Error(w, "Internal server error", http.StatusInternalServerError)
+		return
+	}
+
+	w.Header().Set("Cache-Control", "public, max-age=31536000, immutable")
+	webAssetHandler.ServeHTTP(w, r)
 }
 
 // handleAuthPage serves the authentication/login page
@@ -74,7 +98,8 @@ func (s *server) handleAuthPage(w http.ResponseWriter, r *http.Request) {
 	}
 
 	w.Header().Set("Content-Type", "text/html; charset=utf-8")
-	if err := tmpl.ExecuteTemplate(w, "auth.html", nil); err != nil {
+	w.Header().Set("Cache-Control", "no-cache")
+	if err := tmpl.ExecuteTemplate(w, "auth.html", s.pageData()); err != nil {
 		s.ErrorWith("Failed to render auth template", slog.F("err", err))
 		http.Error(w, "Internal server error", http.StatusInternalServerError)
 	}
@@ -89,9 +114,6 @@ func (s *server) handleConsolePage(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// Authentication is already handled by the middleware, this is UI stuff
-	data.AuthOn = s.authOn
-
 	// Load templates
 	tmpl, err := loadTemplates()
 	if err != nil {
@@ -101,7 +123,8 @@ func (s *server) handleConsolePage(w http.ResponseWriter, r *http.Request) {
 	}
 
 	w.Header().Set("Content-Type", "text/html; charset=utf-8")
-	if err := tmpl.ExecuteTemplate(w, "console.html", data); err != nil {
+	w.Header().Set("Cache-Control", "no-cache")
+	if err := tmpl.ExecuteTemplate(w, "console.html", s.pageData()); err != nil {
 		s.ErrorWith("Failed to render console template", slog.F("err", err))
 		http.Error(w, "Internal server error", http.StatusInternalServerError)
 	}

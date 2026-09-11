@@ -56,24 +56,6 @@ func FromToSlash(system, path string) string {
 	return unixToSlash(path)
 }
 
-// replaceSlashes replaces all instances of oldChar with newChar in a string
-func replaceSlashes(s string, oldChar, newChar byte) string {
-	// If the string doesn't contain the old character, return it unchanged
-	if !strings.ContainsRune(s, rune(oldChar)) {
-		return s
-	}
-
-	// Create a new byte slice and replace the characters
-	bytes := []byte(s)
-	for i := 0; i < len(bytes); i++ {
-		if bytes[i] == oldChar {
-			bytes[i] = newChar
-		}
-	}
-
-	return string(bytes)
-}
-
 // NormalizeToSystemPath converts an SFTP path (always Unix-style) to display format
 // based on the remote system type.
 // For Windows: /C:/Users/user → C:\Users\user
@@ -91,14 +73,7 @@ func NormalizeToSystemPath(sftpPath, system string) string {
 		return path
 	}
 
-	// If it's already a native Windows path (contains backslashes) or absolute from root, stay careful
-	if !strings.HasPrefix(sftpPath, "/") {
-		return strings.ReplaceAll(sftpPath, "/", "\\")
-	}
-
-	// Default conversion for other absolute SFTP paths (e.g., from root-relative paths)
-	path := strings.ReplaceAll(sftpPath, "/", "\\")
-	return path
+	return strings.ReplaceAll(sftpPath, "/", "\\")
 }
 
 // NormalizeToSFTPPath converts a display-format path to SFTP format (Unix-style)

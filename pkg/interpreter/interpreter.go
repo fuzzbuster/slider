@@ -16,10 +16,17 @@ type BaseInfo struct {
 	LaunchDir string `json:"LaunchDir"`
 }
 
+// ProcessInfo contains untrusted process metadata used only for diagnostics.
+type ProcessInfo struct {
+	Name string `json:"name,omitempty"`
+	PID  uint32 `json:"pid,omitempty"`
+}
+
 // Info contains the basic information a remote needs from the peer
 type Info struct {
 	BaseInfo
-	Identity string `json:"identity,omitempty"` // Server identity (fingerprint:port), optional
+	Process  *ProcessInfo `json:"process,omitempty"`
+	Identity string       `json:"identity,omitempty"` // Server identity (fingerprint:port), optional
 }
 
 // Pty defines a platform-independent interface for PTY operations

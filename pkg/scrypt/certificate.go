@@ -34,7 +34,6 @@ type GeneratedCertificate struct {
 
 // CreateCA creates a new certificate authority
 func CreateCA() (*CertificateAuthority, error) {
-	// Generate Ed25519 key pair for the CA
 	publicKey, privateKey, gErr := ed25519.GenerateKey(rand.Reader)
 	if gErr != nil {
 		return nil, fmt.Errorf("failed to generate CA key pair: %v", gErr)
@@ -58,13 +57,11 @@ func CreateCA() (*CertificateAuthority, error) {
 		IsCA:                  true,
 	}
 
-	// Self-sign the CA certificate
 	caCertDER, cErr := x509.CreateCertificate(rand.Reader, caTemplate, caTemplate, publicKey, privateKey)
 	if cErr != nil {
 		return nil, fmt.Errorf("failed to create CA certificate: %v", cErr)
 	}
 
-	// Encode the CA certificate in PEM format
 	caCertPEM := new(bytes.Buffer)
 	peErr := pem.Encode(caCertPEM, &pem.Block{
 		Type:  "CERTIFICATE",
@@ -74,7 +71,6 @@ func CreateCA() (*CertificateAuthority, error) {
 		return nil, fmt.Errorf("failed to encode CA certificate to PEM: %v", peErr)
 	}
 
-	// Encode the CA private key in PEM format
 	pvKeyBytes, mErr := x509.MarshalPKCS8PrivateKey(privateKey)
 	if mErr != nil {
 		return nil, fmt.Errorf("failed to marshal private key: %v", mErr)
@@ -134,7 +130,6 @@ func (ca *CertificateAuthority) CreateCertificate(isServer bool) (*GeneratedCert
 		DNSNames:              []string{"localhost"},
 	}
 
-	// Add appropriate ExtKeyUsage fields based on whether it's a server or client cert
 	if isServer {
 		certTemplate.ExtKeyUsage = []x509.ExtKeyUsage{x509.ExtKeyUsageServerAuth}
 	} else {
@@ -147,7 +142,6 @@ func (ca *CertificateAuthority) CreateCertificate(isServer bool) (*GeneratedCert
 		return nil, fmt.Errorf("failed to create certificate: %v", ccErr)
 	}
 
-	// Parse the certificate to get the x509.Certificate object
 	cert, pcErr := x509.ParseCertificate(certDER)
 	if pcErr != nil {
 		return nil, fmt.Errorf("failed to parse certificate: %v", pcErr)
@@ -208,7 +202,8 @@ func (ca *CertificateAuthority) GetTLSClientConfig(clientCert *GeneratedCertific
 }
 
 // GetTLSServerConfig returns a TLS config for a server using the CA and server certificate
-func (ca *CertificateAuthority) GetTLSServerConfig(serverCert *GeneratedCertificate, verifyClientCert bool) *tls.Config {
+func (ca *CertificateAuthority) GetTLSServerConfig(
+	serverCert *GeneratedCertificate, verifyClientCert bool) *tls.Config {
 	// Create a cert pool and add the CA's cert to it
 	certPool := x509.NewCertPool()
 	certPool.AppendCertsFromPEM(ca.CertPEM)

@@ -5,9 +5,38 @@ import (
 	"testing"
 
 	"slider/pkg/interpreter"
+	"slider/pkg/scrypt"
 	"slider/pkg/session"
 	"slider/pkg/slog"
 )
+
+func TestHostKeyCallbackForFingerprint(t *testing.T) {
+	keyPair, err := scrypt.NewEd25519KeyPair()
+	if err != nil {
+		t.Fatal(err)
+	}
+	signer, err := scrypt.SignerFromKey(keyPair.PrivateKey)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	callback := hostKeyCallbackForFingerprint(keyPair.FingerPrint)
+	if err := callback("", nil, signer.PublicKey()); err != nil {
+		t.Fatalf("matching fingerprint rejected: %v", err)
+	}
+	if err := hostKeyCallbackForFingerprint("wrong")("", nil, signer.PublicKey()); err == nil {
+		t.Fatal("mismatched fingerprint accepted")
+	}
+
+	srv := &server{
+		certTrack: &scrypt.CertTrack{
+			Certs: map[int64]*scrypt.KeyPair{1: keyPair},
+		},
+	}
+	if err := srv.authorizedHostKey("", nil, signer.PublicKey()); err != nil {
+		t.Fatalf("authorized callback host key rejected: %v", err)
+	}
+}
 
 // Test Infrastructure
 
@@ -156,8 +185,8 @@ func TestInt_SessionListing(t *testing.T) {
 	for _, s := range sessions {
 		ids[s.GetID()] = true
 	}
-	if !ids[1] || !ids[2] {
-		t.Error("Expected sessions 1 and 2 to be present")
+	if !ids[sess1.GetID()] || !ids[sess2.GetID()] {
+		t.Errorf("expected sessions %d and %d to be present", sess1.GetID(), sess2.GetID())
 	}
 }
 

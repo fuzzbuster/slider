@@ -37,26 +37,22 @@ var (
 
 // Encode creates a JWT token from claims using HS256 algorithm
 func Encode(claims *Claims, secret []byte) (string, error) {
-	// Encode header
 	headerBytes, err := json.Marshal(standardHeader)
 	if err != nil {
 		return "", fmt.Errorf("failed to marshal header: %w", err)
 	}
 	headerB64 := base64.RawURLEncoding.EncodeToString(headerBytes)
 
-	// Encode claims
 	claimsBytes, err := json.Marshal(claims)
 	if err != nil {
 		return "", fmt.Errorf("failed to marshal claims: %w", err)
 	}
 	claimsB64 := base64.RawURLEncoding.EncodeToString(claimsBytes)
 
-	// Create signature
 	message := headerB64 + "." + claimsB64
 	signature := sign(message, secret)
 	signatureB64 := base64.RawURLEncoding.EncodeToString(signature)
 
-	// Combine all parts
 	token := message + "." + signatureB64
 
 	return token, nil
@@ -64,7 +60,6 @@ func Encode(claims *Claims, secret []byte) (string, error) {
 
 // Decode parses and validates a JWT token
 func Decode(token string, secret []byte) (*Claims, error) {
-	// Split token into parts
 	parts := strings.Split(token, ".")
 	if len(parts) != 3 {
 		return nil, ErrInvalidToken
@@ -74,7 +69,6 @@ func Decode(token string, secret []byte) (*Claims, error) {
 	claimsB64 := parts[1]
 	signatureB64 := parts[2]
 
-	// Verify signature
 	message := headerB64 + "." + claimsB64
 	expectedSignature := sign(message, secret)
 	expectedSignatureB64 := base64.RawURLEncoding.EncodeToString(expectedSignature)
@@ -83,7 +77,6 @@ func Decode(token string, secret []byte) (*Claims, error) {
 		return nil, ErrInvalidSignature
 	}
 
-	// Decode header
 	headerBytes, err := base64.RawURLEncoding.DecodeString(headerB64)
 	if err != nil {
 		return nil, fmt.Errorf("failed to decode header: %w", err)
@@ -94,12 +87,10 @@ func Decode(token string, secret []byte) (*Claims, error) {
 		return nil, fmt.Errorf("failed to unmarshal header: %w", err)
 	}
 
-	// Verify algorithm
 	if h.Alg != "HS256" {
 		return nil, fmt.Errorf("unsupported algorithm: %s", h.Alg)
 	}
 
-	// Decode claims
 	claimsBytes, err := base64.RawURLEncoding.DecodeString(claimsB64)
 	if err != nil {
 		return nil, fmt.Errorf("failed to decode claims: %w", err)
@@ -110,7 +101,6 @@ func Decode(token string, secret []byte) (*Claims, error) {
 		return nil, fmt.Errorf("failed to unmarshal claims: %w", err)
 	}
 
-	// Validate claims
 	if !claims.IsValid() {
 		if claims.IsExpired() {
 			return nil, ErrExpiredToken

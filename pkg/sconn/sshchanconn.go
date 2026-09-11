@@ -9,8 +9,6 @@ import (
 
 type ChannelConn struct {
 	ssh.Channel
-	localAddr  net.Addr
-	remoteAddr net.Addr
 }
 
 func (cc *ChannelConn) Network() string {
@@ -22,17 +20,11 @@ func (cc *ChannelConn) String() string {
 }
 
 func (cc *ChannelConn) LocalAddr() net.Addr {
-	if cc.localAddr == nil {
-		return &net.TCPAddr{IP: net.IPv4(127, 0, 0, 1), Port: 0}
-	}
-	return cc.localAddr
+	return &net.TCPAddr{IP: net.IPv4(127, 0, 0, 1), Port: 0}
 }
 
 func (cc *ChannelConn) RemoteAddr() net.Addr {
-	if cc.remoteAddr == nil {
-		return &net.TCPAddr{IP: net.IPv4(127, 0, 0, 1), Port: 0}
-	}
-	return cc.remoteAddr
+	return &net.TCPAddr{IP: net.IPv4(127, 0, 0, 1), Port: 0}
 }
 
 func (cc *ChannelConn) SetDeadline(_ time.Time) error {
@@ -53,13 +45,7 @@ func (cc *ChannelConn) SetWriteDeadline(_ time.Time) error {
 // SSHChannelToNetConn converts an SSH channel to a net.Conn interface
 // This is used to adapt SSH channels to be used with code that expects net.Conn
 func SSHChannelToNetConn(channel ssh.Channel) net.Conn {
-	// Create default dummy addresses for the connection
-	localAddr := &net.TCPAddr{IP: net.IPv4(127, 0, 0, 1), Port: 0}
-	remoteAddr := &net.TCPAddr{IP: net.IPv4(127, 0, 0, 1), Port: 0}
-
 	return &ChannelConn{
-		Channel:    channel,
-		localAddr:  localAddr,
-		remoteAddr: remoteAddr,
+		Channel: channel,
 	}
 }

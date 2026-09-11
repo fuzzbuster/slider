@@ -16,15 +16,14 @@ import (
 
 // Service represents a Shell service that handles shell connections
 type Service struct {
-	logger        *slog.Logger
-	sessionID     int64
-	opener        ChannelOpener
-	envVarList    []struct{ Key, Value string }
-	interactiveOn bool
-	initTermSize  *types.TermDimensions
-	winChannels   map[net.Conn]chan []byte
-	mutex         sync.Mutex
-	useAltShell   bool
+	logger       *slog.Logger
+	sessionID    int64
+	opener       ChannelOpener
+	envVarList   []struct{ Key, Value string }
+	initTermSize *types.TermDimensions
+	winChannels  map[net.Conn]chan []byte
+	mutex        sync.Mutex
+	useAltShell  bool
 }
 
 // ChannelOpener defines the interface for opening SSH channels and sending requests
@@ -36,17 +35,18 @@ type ChannelOpener interface {
 // NewService creates a new Shell service
 func NewService(logger *slog.Logger, sessionID int64, opener ChannelOpener) *Service {
 	return &Service{
-		logger:        logger,
-		sessionID:     sessionID,
-		opener:        opener,
-		envVarList:    make([]struct{ Key, Value string }, 0),
-		interactiveOn: false,
-		winChannels:   make(map[net.Conn]chan []byte),
+		logger:      logger,
+		sessionID:   sessionID,
+		opener:      opener,
+		envVarList:  make([]struct{ Key, Value string }, 0),
+		winChannels: make(map[net.Conn]chan []byte),
 	}
 }
 
 // SetInitTermSize sets the initial terminal size for next shell connection
 func (s *Service) SetInitTermSize(size types.TermDimensions) {
+	s.mutex.Lock()
+	defer s.mutex.Unlock()
 	s.initTermSize = &size
 }
 
@@ -73,21 +73,20 @@ func (s *Service) Resize(cols, rows uint32) {
 	}
 }
 
-// Type returns the service type identifier
-func (s *Service) Type() string {
-	return "shell"
-}
-
-// Start implements the Service interface - handles a shell connection
-func (s *Service) Start(conn net.Conn) error {
+func (s *Service) Serve(conn net.Conn) error {
 	defer func() { _ = conn.Close() }()
 
 	var cols, rows uint32
+	s.mutex.Lock()
+	initTermSize := s.initTermSize
+	envVarList := append([]struct{ Key, Value string }(nil), s.envVarList...)
+	useAltShell := s.useAltShell
+	s.mutex.Unlock()
 
 	// Use configured initial size if available (e.g. from web console)
-	if s.initTermSize != nil && s.initTermSize.Width > 0 && s.initTermSize.Height > 0 {
-		cols = s.initTermSize.Width
-		rows = s.initTermSize.Height
+	if initTermSize != nil && initTermSize.Width > 0 && initTermSize.Height > 0 {
+		cols = initTermSize.Width
+		rows = initTermSize.Height
 		s.logger.DebugWith("Using pre-configured terminal size",
 			slog.F("session_id", s.sessionID),
 			slog.F("width", cols),
@@ -147,52 +146,59 @@ func (s *Service) Start(conn net.Conn) error {
 	envChange := make(chan []byte, 10)
 	defer close(envChange)
 
-	// Set environment variables
-
 	// Request alternate shell if enabled
-	if s.useAltShell {
-		var altC struct{ Key, Value string }
-		altC.Key = conf.SliderAltShellEnvVar
-		altC.Value = "true"
-		s.envVarList = append(s.envVarList, altC)
+	if useAltShell {
+		envVarList = append(envVarList, struct{ Key, Value string }{
+			Key:   conf.SliderAltShellEnvVar,
+			Value: "true",
+		})
 	}
 
-	// Finalize environment variables
-	var envCloser struct{ Key, Value string }
-	envCloser.Key = conf.SliderCloserEnvVar
-	envCloser.Value = "true"
-	s.envVarList = append(s.envVarList, envCloser)
+	envVarList = append(envVarList, struct{ Key, Value string }{
+		Key:   conf.SliderCloserEnvVar,
+		Value: "true",
+	})
 
-	for _, ev := range s.envVarList {
-		envChange <- ssh.Marshal(ev)
+	result := make(chan error, 1)
+	go func() {
+		result <- s.interactiveConnPipe(conn, conf.SSHRequestShell, nil, winChange, envChange)
+	}()
+	for _, ev := range envVarList {
+		select {
+		case envChange <- ssh.Marshal(ev):
+		case err := <-result:
+			return err
+		}
 	}
 
-	return s.interactiveConnPipe(conn, conf.SSHRequestShell, nil, winChange, envChange)
+	return <-result
 }
 
-// Stop implements the Service interface
-func (s *Service) Stop() error {
-	// Shell service doesn't maintain persistent state that needs cleanup
+func (s *Service) Close() error {
 	return nil
 }
 
 // SetEnvVarList sets the environment variable list for the service
 func (s *Service) SetEnvVarList(evl []struct{ Key, Value string }) {
-	s.envVarList = evl
-}
-
-// SetInteractiveOn sets whether interactive mode is enabled
-func (s *Service) SetInteractiveOn(interactiveOn bool) {
-	s.interactiveOn = interactiveOn
+	s.mutex.Lock()
+	s.envVarList = append(s.envVarList[:0], evl...)
+	s.mutex.Unlock()
 }
 
 // SetUseAltShell sets whether to use the alternate shell
 func (s *Service) SetUseAltShell(useAlt bool) {
+	s.mutex.Lock()
 	s.useAltShell = useAlt
+	s.mutex.Unlock()
 }
 
 // interactiveConnPipe is extracted from instance.go to handle shell connection piping
-func (s *Service) interactiveConnPipe(conn net.Conn, channelType string, payload []byte, winChange chan []byte, envChange chan []byte) error {
+func (s *Service) interactiveConnPipe(
+	conn net.Conn,
+	channelType string,
+	payload []byte,
+	winChange chan []byte,
+	envChange chan []byte) error {
 	sliderClientChannel, shellRequests, oErr := s.opener.OpenChannel(channelType, payload)
 	if oErr != nil {
 		s.logger.ErrorWith("Failed to open SSH channel",
@@ -203,7 +209,6 @@ func (s *Service) interactiveConnPipe(conn net.Conn, channelType string, payload
 	}
 	defer func() { _ = sliderClientChannel.Close() }()
 
-	// Handle window-change events
 	go func() {
 		for sizeBytes := range winChange {
 			_, wErr := sliderClientChannel.SendRequest(conf.SSHRequestWindowChange, true, sizeBytes)
@@ -216,7 +221,6 @@ func (s *Service) interactiveConnPipe(conn net.Conn, channelType string, payload
 		}
 	}()
 
-	// Handle environment variable events
 	go func() {
 		for envVarBytes := range envChange {
 			_, eErr := sliderClientChannel.SendRequest(conf.SSHRequestEnv, true, envVarBytes)
@@ -229,10 +233,8 @@ func (s *Service) interactiveConnPipe(conn net.Conn, channelType string, payload
 		}
 	}()
 
-	// Handle requests from the SSH channel
 	go ssh.DiscardRequests(shellRequests)
 
-	// Pipe SSH channel with connection
 	_, _ = sio.PipeWithCancel(conn, sliderClientChannel)
 
 	return nil

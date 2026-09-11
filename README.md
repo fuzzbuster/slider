@@ -50,6 +50,18 @@ make <TARGET> UPX_BRUTE=yes
 Makefiles for building [Server](server/cmd) or [Client](client/cmd) only, are also included just in case it fits best your purpose. 
 The combined Slider Server/Client binary is the recommended way to go. For those binaries that allow UPX packing, the final size of a standalone binary is practically identical to the combined binary.
 
+The Web Console source is built with Node.js 22, Vite and TypeScript. Its
+production assets are committed and embedded in the Go binary, so a normal Go
+build does not require Node.js and the shipped console does not load resources
+from a CDN. After changing files under `web/`, rebuild and verify the assets:
+
+```
+npm ci
+make web-typecheck
+make web-build
+make web-check
+```
+
 ## Server
 
 ```
@@ -67,9 +79,17 @@ Flags:
       --auth                         Requires authentication throughout the server
       --ca-store                     Store Server JSON with key and CA for later use
       --ca-store-path string         Path for reading and/or storing a Server JSON
+      --callback string              Connect to server on startup and offer control (requires --gateway)
+      --callback-ca string           CA certificate for callback server verification
+      --callback-cert-id int         Certificate ID used to authenticate callback host key
+      --callback-retry               Retry callback connection indefinitely
+      --callback-server-name string  Server name for callback TLS verification
+      --callback-tls-cert string     TLS client certificate for callback
+      --callback-tls-key string      TLS client key for callback
       --caller-log                   Display caller information in logs
       --certs string                 Path of a valid slider-certs json file
       --colorless                    Disables logging colors
+      --gateway                      Enables Gateway mode (allows server chaining)
       --headless                     Disables the internal console (CTR^C) and enables the Websocket Console
   -h, --help                         help for server
       --http-console                 Enables /console HTTP endpoint
@@ -118,7 +138,7 @@ Local address to bind to. By default, Slider binds to all local addresses
 ##### `--auth` and `--certs`:
 By default, Slider Clients do not require any authentication to connect to Server.
 
-* `--auth`: Requires key authentication to all Clients. If `--http-console` is enabled, the web console will require fingerprint authentication.
+* `--auth`: Requires key authentication to all Clients. If `--http-console` is enabled, the web console requires an authorized certificate fingerprint and a signature made with its private key.
 * `--certs`: Is an optional parameter, holding the path of a Certificate Jar file. This flag requires authentication to be enabled.
 
 When `--auth` is passed, a few things will and may happen:
@@ -183,7 +203,7 @@ A redirect parameter must be at least a URL with a valid scheme and host (`http[
 HTTP connections to the root path `/` will be redirected to the given URL, while the rest of the connections will proceed as usual.
 
 ##### `--http-console`:
-Disabled by default. If enabled, it will serve the Slider Server Console at `/console` using xterm.js which connects to the Websocket Console. 
+Disabled by default. If enabled, it will serve the Slider Server Console at `/console` using the bundled xterm.js frontend, which connects to the Websocket Console without loading third-party runtime resources.
 If `--auth` is enabled then authentication will be required to access the Websocket Console. 
 In order to avoid sending credentials in plain text, enabling authentication also requires the server using TLS, otherwise it will refuse to start.
 If `--http-template` and `--http-redirect` are not provided, then the root path will redirect you to the authentication page (if `auth` is enabled) or directly to the console (if `auth` is disabled).
@@ -242,12 +262,16 @@ graph TD
 ##### `--callback`:
 Callback receives a server address as argument and attempts to connect to it, allowing a gateway server to initiate a connection to another server while giving the other server control. This might be useful when the gateway is behind a firewall or NAT and cannot be reached directly.
 
+Callbacks require `--auth`, `--callback-cert-id`, and an HTTPS target. Use `--callback-ca` and
+`--callback-server-name` for private CAs. If the target requires mTLS, also provide
+`--callback-tls-cert` and `--callback-tls-key`.
+
 If the callback connection is unsuccessful, the gateway will proceed to its normal operation. 
 It is possible to attempt the connection again by using the `connect --callback` command from the console.
 
 To start a gateway server that automatically connects back to another server on launch run:
 ```bash
-./slider server --gateway --callback server.example.com:8080
+./slider server --gateway --auth --callback https://server.example.com:8080 --callback-cert-id 1
 ```
 
 ##### `--callback-retry`:
@@ -262,6 +286,7 @@ Slider# help
   -------   -----------                                                 
   bg        Puts Console into background and returns to logging output  
   certs     Interacts with the Server Certificate Jar                   
+  clear     Clears the console
   connect   Receives the address of a Client to connect to              
   execute   Runs a command remotely and returns the output              
   exit      Exits Console and terminates the Server                     
@@ -328,6 +353,22 @@ Running an interactive session provides its own sets of commands:
   !command          Execute "command" in local shell (non-interactive)
 ```
 
+`sysinfo` also reports the peer Process Name and PID. Linux and macOS derive the
+full name from the OS-reported executable location but transmit only its
+sanitized basename; Windows uses the native process snapshot API. A failed
+lookup is displayed as `--`, and command-line arguments are never used as a
+fallback. Names are bounded to 255 Unicode code points.
+
+Process Name and PID are untrusted, sanitized diagnostics. They are not used for
+authentication, authorization, routing, session identity, logging or command
+construction. The optional metadata remains compatible with `slider-v2`; an old
+Client, Server or Gateway omits or drops it and `sysinfo` displays `--`.
+
+For complete multi-hop visibility, upgrade the Server/Gateway nodes that accept
+Clients first, then every Gateway from the edge toward the controlling Server,
+and finally upgrade Clients. Mixed-version chains remain functional and fail
+closed by omitting process diagnostics.
+
 A note on the interactive `shell` command:
 * If the Client host is running *nix OS or a Windows version with ConPTY (introduced in late 2018) the spawned Shell will be
   fully interactive if this is not supported by the target OS, the shell won't be executed to avoid uncertain behavior and 
@@ -349,9 +390,12 @@ Establishes a connection to a Client
 Usage: Usage: connect [flags] <host_address:port>
 
   -i, --cert-id int       Specify certID for SSH key authentication
+      --ca string         CA certificate for server verification
   -d, --dns string        Use custom DNS resolver
+  -f, --fingerprint string Expected SSH host fingerprint
   -g, --gateway           Connect to another server in gateway mode
   -p, --proto string      Use custom proto (default "slider-v1")
+      --server-name string Server name for TLS verification
   -t, --tls-cert string   Use custom client TLS certificate
   -k, --tls-key string    Use custom client TLS key
 ```
@@ -373,16 +417,17 @@ the `-i` flag to specify the certificate ID that corresponds to the fingerprint 
 Depending on configuration, a TLS Listener may require you to provide a valid certificate for client authentication. 
 In this case, you can provide a certificate and key (flags `-c`, `-k`) signed with the same CA.
 
-When connecting to another gateway server (for multi-hop routing), use the `--gateway` flag:
+When connecting to another gateway server (for multi-hop routing), both servers must use authentication and the
+connection requires an authorized certificate ID plus the target SSH fingerprint:
 
 ```
-Slider# connect --gateway gateway-server.example.com:8080
+Slider# connect --gateway --cert-id 1 --fingerprint <fingerprint> gateway-server.example.com:8080
 ```
 
-When connecting as a callback (gateway server wanting to be controlled by another server), use the `--callback` flag:
+Listener and callback connections require HTTPS. Callback connections also require an authorized certificate ID:
 
 ```
-Slider# connect --callback regular-server.example.com:8080
+Slider# connect --callback --cert-id 1 https://regular-server.example.com:8080
 ```
 
 ##### SOCKS
@@ -591,7 +636,7 @@ Flags:
       --caller-log                  Display caller information in logs
       --colorless                   Disables logging colors
       --dns string                  Uses custom DNS server <host[:port]> for resolving server address
-      --fingerprint string          Server fingerprint for host verification (listener)
+      --fingerprint string          Server SSH fingerprint for host verification
   -h, --help                        help for client
       --http-health                 Enables /health HTTP path
       --http-redirect string        Redirects incoming HTTP to given URL (listener)
@@ -609,6 +654,8 @@ Flags:
       --port int                    Listener port (default 8081)
       --proto string                Set your own proto string (default "slider-v1")
       --retry                       Retries reconnection indefinitely
+      --server-ca string            CA certificate for verifying the server
+      --server-name string          Server name for TLS verification
       --tls-cert string             TLS client Certificate
       --tls-key string              TLS client Key
       --verbose string              Adds verbosity [debug|info|warn|error|off] (default "info")
@@ -664,12 +711,19 @@ The main two reasons for using a Slider Client on Listener mode are:
 * The Server is located on a private network and a regular Client would not be able to reach it.
 * Several Servers may want to collaborate on the same Client or use a particular Client as a gateway.
 
+#### Server Verification
+
 ##### `--fingerprint`:
 A Slider fingerprint represents a sha256sum string of a base64 encoded public key.
 
 This flag could either be a fingerprint string or a file containing a list fingerprints, each one of them representing
 a different Slider Server. This is useful when we want to be able to authorize several Servers by their public key.
-A connection from a Server with a fingerprint not successfully verified will be rejected.
+A connection from a Server with a fingerprint not successfully verified will be rejected. Plain HTTP/WebSocket
+connections require this flag. HTTPS connections also validate the TLS certificate.
+
+##### `--server-ca` and `--server-name`:
+Use these flags to verify servers using a private CA or an explicit TLS server name. TLS certificate verification is
+never disabled automatically.
 
 ##### HTTP flags:
 Same considerations as in Server HTTP flags documentation applies.
@@ -681,8 +735,7 @@ A Reverse Client configured with the `--retry` flag will try to reconnect to the
 value. You will very likely want to tune `--keepalive` to either short reconnection intervals or expand them fitting 
 your needs.
 
-Enabling `--retry` will only have an effect if the Client was able to connect to the Server at least once, in other words, 
-if the Client fails to connect to the Server on the first run it will terminate its execution as usual.
+When enabled, retries apply to the initial connection as well as later disconnects.
 
 Combining Client `--retry` with Server `--auth` and maintaining different Certificate Jar Files, is a great way to work 
 between different "Workspaces" where using one Certificate Jar or another will determine what Clients will automatically
@@ -724,6 +777,7 @@ Usage:
   slider hook [flags] <server_url>
 
 Flags:
+      --auth-key string       Slider private key for challenge signing
       --ca string            CA certificate for server verification
       --client-cert string   Client certificate for mTLS
       --client-key string    Client private key for mTLS
@@ -739,12 +793,10 @@ The `hook` command provides a way to connect to a Slider Server's web console di
 
 ### Hook Flags Overview
 
-##### `--fingerprint`:
-When the server has authentication enabled (`--auth`), you must provide a valid certificate fingerprint to authenticate. The hook command will:
-1. Exchange the fingerprint for a JWT token via the `/auth/token` endpoint
-2. Use the JWT token to authenticate the WebSocket connection to `/console/ws`
-
-This flag is required when connecting to servers with `--auth` enabled.
+##### `--fingerprint` and `--auth-key`:
+When the server has authentication enabled (`--auth`), both flags are required. The hook command requests a one-time
+challenge, signs it with the authorized Slider private key, exchanges the signature for a JWT, and sends the JWT in the
+WebSocket `Authorization` header. The private key is never sent to the server.
 
 ##### `--client-cert` and `--client-key`:
 When connecting to a server that uses TLS with client certificate verification (`--listener-ca`), you must provide a valid client certificate and private key. These must be signed by the same CA that the server trusts.
@@ -761,3 +813,17 @@ When using this flag, you should also provide `--server-name` to specify the exp
 ##### `--server-name`:
 Specifies the server name for TLS verification. This is used in combination with `--ca` to verify that the server's certificate matches the expected server name.
 
+## Testing
+
+Run package tests with `make test`, native process-level tests with
+`make test-e2e`, and browser tests with `make test-e2e-web`.
+
+The extended suite includes a real interactive Vim session and 1 GiB SFTP
+upload/download:
+
+```bash
+make test-e2e-extended
+```
+
+See [e2e/README.md](e2e/README.md) for the functional coverage matrix,
+platform scope, stability rules, and report locations.

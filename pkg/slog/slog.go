@@ -17,6 +17,7 @@ type LogBuff struct {
 	io.Writer        // Writer to save log in a buffer
 	io.Reader        // Reader to print buffer to stdout
 	buff      []byte // Hold the logs while not using stdout
+	mutex     sync.Mutex
 }
 
 type Logger struct {
@@ -47,12 +48,22 @@ var (
 )
 
 func (lb *LogBuff) Write(p []byte) (int, error) {
+	lb.mutex.Lock()
+	defer lb.mutex.Unlock()
 	lb.buff = append(lb.buff, p...)
 	return len(p), nil
 }
 
 func (lb *LogBuff) Read(p []byte) (int, error) {
 	return len(p), nil
+}
+
+func (lb *LogBuff) drain() []byte {
+	lb.mutex.Lock()
+	defer lb.mutex.Unlock()
+	buffered := lb.buff
+	lb.buff = nil
+	return buffered
 }
 
 func NewLogger(prefix string) *Logger {
@@ -145,21 +156,17 @@ func (l *Logger) LogToStdout() {
 }
 
 func (l *Logger) BufferOut() {
-	fmt.Printf("%s", l.logBuff.buff)
 	l.Lock()
-	l.logBuff.buff = make([]byte, 0)
+	l.logger.SetOutput(os.Stdout)
 	l.Unlock()
+	_, _ = os.Stdout.Write(l.logBuff.drain())
 }
 
 func (l *Logger) Printf(t string, args ...any) {
 	caller := l.getCallerIfEnabled(1)
 	if l.jsonOn {
 		msg := fmt.Sprintf(t, args...)
-		callerInfo := ""
-		if caller != "" {
-			callerInfo = strings.Trim(strings.TrimSpace(caller), "<>")
-		}
-		jsonMsg := l.formatAsJSON(msg, "", nil, callerInfo)
+		jsonMsg := l.formatAsJSON(msg, "", nil, caller)
 		l.logger.Println(jsonMsg)
 	} else {
 		l.logger.Printf("  --  %s"+t, append([]any{caller}, args...)...)
@@ -171,11 +178,7 @@ func (l *Logger) Debugf(t string, args ...any) {
 		caller := l.getCallerIfEnabled(1)
 		if l.jsonOn {
 			msg := fmt.Sprintf(t, args...)
-			callerInfo := ""
-			if caller != "" {
-				callerInfo = strings.Trim(strings.TrimSpace(caller), "<>")
-			}
-			jsonMsg := l.formatAsJSON(msg, "debug", nil, callerInfo)
+			jsonMsg := l.formatAsJSON(msg, "debug", nil, caller)
 			l.logger.Println(jsonMsg)
 		} else {
 			l.logger.Printf(" "+DEBU+" %s"+t, append([]any{caller}, args...)...)
@@ -187,11 +190,7 @@ func (l *Logger) DWarnf(t string, args ...any) {
 		caller := l.getCallerIfEnabled(1)
 		if l.jsonOn {
 			msg := fmt.Sprintf(t, args...)
-			callerInfo := ""
-			if caller != "" {
-				callerInfo = strings.Trim(strings.TrimSpace(caller), "<>")
-			}
-			jsonMsg := l.formatAsJSON(msg, "warn", nil, callerInfo)
+			jsonMsg := l.formatAsJSON(msg, "warn", nil, caller)
 			l.logger.Println(jsonMsg)
 		} else {
 			l.logger.Printf(" "+WARN+" %s"+t, append([]any{caller}, args...)...)
@@ -204,11 +203,7 @@ func (l *Logger) DErrorf(t string, args ...any) {
 		caller := l.getCallerIfEnabled(1)
 		if l.jsonOn {
 			msg := fmt.Sprintf(t, args...)
-			callerInfo := ""
-			if caller != "" {
-				callerInfo = strings.Trim(strings.TrimSpace(caller), "<>")
-			}
-			jsonMsg := l.formatAsJSON(msg, "error", nil, callerInfo)
+			jsonMsg := l.formatAsJSON(msg, "error", nil, caller)
 			l.logger.Println(jsonMsg)
 		} else {
 			l.logger.Printf(" "+ERRO+" %s"+t, append([]any{caller}, args...)...)
@@ -221,11 +216,7 @@ func (l *Logger) Warnf(t string, args ...any) {
 		caller := l.getCallerIfEnabled(1)
 		if l.jsonOn {
 			msg := fmt.Sprintf(t, args...)
-			callerInfo := ""
-			if caller != "" {
-				callerInfo = strings.Trim(strings.TrimSpace(caller), "<>")
-			}
-			jsonMsg := l.formatAsJSON(msg, "warn", nil, callerInfo)
+			jsonMsg := l.formatAsJSON(msg, "warn", nil, caller)
 			l.logger.Println(jsonMsg)
 		} else {
 			l.logger.Printf(" "+WARN+" %s"+t, append([]any{caller}, args...)...)
@@ -238,11 +229,7 @@ func (l *Logger) Infof(t string, args ...any) {
 		caller := l.getCallerIfEnabled(1)
 		if l.jsonOn {
 			msg := fmt.Sprintf(t, args...)
-			callerInfo := ""
-			if caller != "" {
-				callerInfo = strings.Trim(strings.TrimSpace(caller), "<>")
-			}
-			jsonMsg := l.formatAsJSON(msg, "info", nil, callerInfo)
+			jsonMsg := l.formatAsJSON(msg, "info", nil, caller)
 			l.logger.Println(jsonMsg)
 		} else {
 			l.logger.Printf(" "+INFO+" %s"+t, append([]any{caller}, args...)...)
@@ -254,11 +241,7 @@ func (l *Logger) Fatalf(t string, args ...any) {
 	caller := l.getCallerIfEnabled(1)
 	if l.jsonOn {
 		msg := fmt.Sprintf(t, args...)
-		callerInfo := ""
-		if caller != "" {
-			callerInfo = strings.Trim(strings.TrimSpace(caller), "<>")
-		}
-		jsonMsg := l.formatAsJSON(msg, "fatal", nil, callerInfo)
+		jsonMsg := l.formatAsJSON(msg, "fatal", nil, caller)
 		l.logger.Fatalln(jsonMsg)
 	}
 	l.logger.Fatalf(" "+FATA+" %s"+t, append([]any{caller}, args...)...)
@@ -270,11 +253,7 @@ func (l *Logger) Errorf(t string, args ...any) {
 		caller := l.getCallerIfEnabled(1)
 		if l.jsonOn {
 			msg := fmt.Sprintf(t, args...)
-			callerInfo := ""
-			if caller != "" {
-				callerInfo = strings.Trim(strings.TrimSpace(caller), "<>")
-			}
-			jsonMsg := l.formatAsJSON(msg, "error", nil, callerInfo)
+			jsonMsg := l.formatAsJSON(msg, "error", nil, caller)
 			l.logger.Println(jsonMsg)
 		} else {
 			l.logger.Printf(" "+ERRO+" %s"+t, append([]any{caller}, args...)...)
@@ -287,11 +266,7 @@ func (l *Logger) InfoWith(msg string, fields ...Field) {
 	if l.logLevel <= lvlInfo {
 		caller := l.getCallerIfEnabled(1)
 		if l.jsonOn {
-			callerInfo := ""
-			if caller != "" {
-				callerInfo = strings.Trim(strings.TrimSpace(caller), "<>")
-			}
-			jsonMsg := l.formatAsJSON(msg, "info", fields, callerInfo)
+			jsonMsg := l.formatAsJSON(msg, "info", fields, caller)
 			l.logger.Println(jsonMsg)
 		} else {
 			fmtFields := l.formatWithFields(msg, fields)
@@ -305,11 +280,7 @@ func (l *Logger) DebugWith(msg string, fields ...Field) {
 	if l.logLevel == lvlDebug {
 		caller := l.getCallerIfEnabled(1)
 		if l.jsonOn {
-			callerInfo := ""
-			if caller != "" {
-				callerInfo = strings.Trim(strings.TrimSpace(caller), "<>")
-			}
-			jsonMsg := l.formatAsJSON(msg, "debug", fields, callerInfo)
+			jsonMsg := l.formatAsJSON(msg, "debug", fields, caller)
 			l.logger.Println(jsonMsg)
 		} else {
 			fmtFields := l.formatWithFields(msg, fields)
@@ -323,11 +294,7 @@ func (l *Logger) WarnWith(msg string, fields ...Field) {
 	if l.logLevel <= lvlWarn {
 		caller := l.getCallerIfEnabled(1)
 		if l.jsonOn {
-			callerInfo := ""
-			if caller != "" {
-				callerInfo = strings.Trim(strings.TrimSpace(caller), "<>")
-			}
-			jsonMsg := l.formatAsJSON(msg, "warn", fields, callerInfo)
+			jsonMsg := l.formatAsJSON(msg, "warn", fields, caller)
 			l.logger.Println(jsonMsg)
 		} else {
 			fmtFields := l.formatWithFields(msg, fields)
@@ -341,11 +308,7 @@ func (l *Logger) ErrorWith(msg string, fields ...Field) {
 	if l.logLevel <= lvlError {
 		caller := l.getCallerIfEnabled(1)
 		if l.jsonOn {
-			callerInfo := ""
-			if caller != "" {
-				callerInfo = strings.Trim(strings.TrimSpace(caller), "<>")
-			}
-			jsonMsg := l.formatAsJSON(msg, "error", fields, callerInfo)
+			jsonMsg := l.formatAsJSON(msg, "error", fields, caller)
 			l.logger.Println(jsonMsg)
 		} else {
 			fmtFields := l.formatWithFields(msg, fields)
@@ -358,11 +321,7 @@ func (l *Logger) ErrorWith(msg string, fields ...Field) {
 func (l *Logger) FatalWith(msg string, fields ...Field) {
 	caller := l.getCallerIfEnabled(1)
 	if l.jsonOn {
-		callerInfo := ""
-		if caller != "" {
-			callerInfo = strings.Trim(strings.TrimSpace(caller), "<>")
-		}
-		jsonMsg := l.formatAsJSON(msg, "fatal", fields, callerInfo)
+		jsonMsg := l.formatAsJSON(msg, "fatal", fields, caller)
 		l.logger.Fatalln(jsonMsg)
 	}
 	fmtFields := l.formatWithFields(msg, fields)
@@ -374,11 +333,7 @@ func (l *Logger) DWarnWith(msg string, fields ...Field) {
 	if l.logLevel == lvlDebug {
 		caller := l.getCallerIfEnabled(1)
 		if l.jsonOn {
-			callerInfo := ""
-			if caller != "" {
-				callerInfo = strings.Trim(strings.TrimSpace(caller), "<>")
-			}
-			jsonMsg := l.formatAsJSON(msg, "warn", fields, callerInfo)
+			jsonMsg := l.formatAsJSON(msg, "warn", fields, caller)
 			l.logger.Println(jsonMsg)
 		} else {
 			fmtFields := l.formatWithFields(msg, fields)
@@ -392,11 +347,7 @@ func (l *Logger) DErrorWith(msg string, fields ...Field) {
 	if l.logLevel == lvlDebug {
 		caller := l.getCallerIfEnabled(1)
 		if l.jsonOn {
-			callerInfo := ""
-			if caller != "" {
-				callerInfo = strings.Trim(strings.TrimSpace(caller), "<>")
-			}
-			jsonMsg := l.formatAsJSON(msg, "error", fields, callerInfo)
+			jsonMsg := l.formatAsJSON(msg, "error", fields, caller)
 			l.logger.Println(jsonMsg)
 		} else {
 			fmtFields := l.formatWithFields(msg, fields)
@@ -406,7 +357,6 @@ func (l *Logger) DErrorWith(msg string, fields ...Field) {
 }
 
 func (l *Logger) SetLevel(verbosity string) error {
-	var err error
 	verbosity = strings.ToUpper(verbosity)
 	switch verbosity {
 	case "DEBUG":
@@ -420,9 +370,9 @@ func (l *Logger) SetLevel(verbosity string) error {
 	case "OFF":
 		l.logLevel = disabled
 	default:
-		err = fmt.Errorf("expected one of [debug|info|warn|error|off]")
+		return fmt.Errorf("expected one of [debug|info|warn|error|off]")
 	}
-	return err
+	return nil
 }
 
 // IsDebug returns true if the logger is set to debug level
@@ -443,10 +393,6 @@ func F(key string, value any) Field {
 
 // formatWithFields formats a message with structured fields
 func (l *Logger) formatWithFields(msg string, fields []Field) string {
-	if l.jsonOn {
-		return l.formatAsJSON(msg, "", fields, "")
-	}
-
 	if len(fields) == 0 {
 		return msg
 	}
@@ -481,7 +427,7 @@ func (l *Logger) formatAsJSON(msg string, level string, fields []Field, caller s
 	}
 
 	if caller != "" {
-		logEntry["caller"] = caller
+		logEntry["caller"] = strings.Trim(strings.TrimSpace(caller), "<>")
 	}
 
 	// Add structured fields

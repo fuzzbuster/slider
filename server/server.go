@@ -28,20 +28,20 @@ const (
 
 // sessionTrack keeps track of sessions and clients
 type sessionTrack struct {
-	SessionCount  int64                                   // Number of Sessions created
-	SessionActive int64                                   // Number of Active Sessions
-	Sessions      map[int64]*session.BidirectionalSession // Map of Sessions
+	Sessions map[int64]*session.BidirectionalSession // Map of Sessions
 }
 
 type server struct {
 	*slog.Logger
 	sshConf              *ssh.ServerConfig
 	sessionTrack         *sessionTrack
-	sessionTrackMutex    sync.Mutex
+	sessionTrackMutex    sync.RWMutex
 	console              Console
 	serverInterpreter    *interpreter.Interpreter
 	certTrack            *scrypt.CertTrack
-	certTrackMutex       sync.Mutex
+	certTrackMutex       sync.RWMutex
+	authChallenges       map[string]authChallenge
+	authChallengeMutex   sync.Mutex
 	certJarFile          string
 	authOn               bool
 	fingerprint          string
@@ -62,8 +62,10 @@ type server struct {
 	CertificateAuthority *scrypt.CertificateAuthority
 	customProto          string
 	commandRegistry      *CommandRegistry
-	remoteSessions       map[string]*RemoteSessionState
+	remoteSessions       map[remoteStateKey]*RemoteSessionState
 	remoteSessionsMutex  sync.Mutex
+	unifiedSessionIDs    map[SessionKey]int64
+	unifiedSessionMutex  sync.Mutex
 	localSocks           LocalSocksServer // Local SOCKS server state
 }
 
@@ -71,7 +73,6 @@ type server struct {
 type LocalSocksServer struct {
 	mu     sync.Mutex
 	server *socks.LocalServer
-	port   int
 }
 
 type RemoteSessionState struct {
@@ -171,8 +172,8 @@ func (s *server) NewSSHServer(biSession *session.BidirectionalSession) {
 	// Register handlers available to ALL sessions
 	appRouter.RegisterHandler("slider-beacon", s.BeaconChannelHandler)
 
-	if s.gateway {
-		// Register handlers available only to Gateway sessions
+	if s.gateway && biSession.GetPeerRole().IsOperator() {
+		// Only an operator peer may route through a gateway.
 		appRouter.RegisterHandler("slider-connect", remote.HandleSliderConnect)
 	}
 	biSession.SetRouter(appRouter)
@@ -197,8 +198,9 @@ func (s *server) clientVerification(conn ssh.ConnMetadata, key ssh.PublicKey) (*
 		return nil, fmt.Errorf("failed to generate fingerprint from public key: %s", fErr)
 	}
 
-	if id, ok := scrypt.IsAllowedFingerprint(fp, s.certTrack.Certs); ok {
-		s.DebugWith("Authenticated Client", slog.F("addr", conn.RemoteAddr()), slog.F("fingerprint", fp), slog.F("cert_id", id))
+	if id, _, ok := s.getCertByFingerprint(fp); ok {
+		s.DebugWith("Authenticated Client",
+			slog.F("addr", conn.RemoteAddr()), slog.F("fingerprint", fp), slog.F("cert_id", id))
 		return &ssh.Permissions{
 			Extensions: map[string]string{
 				"fingerprint": fp,
@@ -216,16 +218,11 @@ func (s *server) GetLogger() *slog.Logger {
 	return s.Logger
 }
 
-// GetInterpreter returns the server interpreter
-func (s *server) GetInterpreter() *interpreter.Interpreter {
-	return s.serverInterpreter
-}
-
 // GetSession retrieves a session by ID
 // Implements session.ApplicationServer interface
 func (s *server) GetSession(id int) (*session.BidirectionalSession, error) {
-	s.sessionTrackMutex.Lock()
-	defer s.sessionTrackMutex.Unlock()
+	s.sessionTrackMutex.RLock()
+	defer s.sessionTrackMutex.RUnlock()
 
 	sess, ok := s.sessionTrack.Sessions[int64(id)]
 	if !ok {
@@ -237,12 +234,12 @@ func (s *server) GetSession(id int) (*session.BidirectionalSession, error) {
 // GetAllSessions returns all local sessions sorted by ID
 // Implements session.Registry interface
 func (s *server) GetAllSessions() []*session.BidirectionalSession {
-	s.sessionTrackMutex.Lock()
+	s.sessionTrackMutex.RLock()
 	sessions := make([]*session.BidirectionalSession, 0, len(s.sessionTrack.Sessions))
 	for _, sess := range s.sessionTrack.Sessions {
 		sessions = append(sessions, sess)
 	}
-	s.sessionTrackMutex.Unlock()
+	s.sessionTrackMutex.RUnlock()
 
 	// Sort sessions by ID to ensure deterministic order
 	sort.Slice(sessions, func(i, j int) bool {
@@ -276,6 +273,19 @@ func (s *server) GetFingerprint() string {
 	return s.fingerprint
 }
 
+func (s *server) addSession(sess *session.BidirectionalSession) {
+	s.sessionTrackMutex.Lock()
+	defer s.sessionTrackMutex.Unlock()
+
+	s.sessionTrack.Sessions[sess.GetID()] = sess
+}
+
+func (s *server) activeSessionCount() int64 {
+	s.sessionTrackMutex.RLock()
+	defer s.sessionTrackMutex.RUnlock()
+	return int64(len(s.sessionTrack.Sessions))
+}
+
 // dropWebSocketSession removes a session from tracking
 func (s *server) dropWebSocketSession(sess *session.BidirectionalSession) {
 	if sess == nil {
@@ -287,11 +297,14 @@ func (s *server) dropWebSocketSession(sess *session.BidirectionalSession) {
 		return
 	}
 
+	_ = sess.Close()
+
 	s.sessionTrackMutex.Lock()
 	defer s.sessionTrackMutex.Unlock()
 
-	delete(s.sessionTrack.Sessions, id)
-	s.sessionTrack.SessionActive--
+	if _, ok := s.sessionTrack.Sessions[id]; ok {
+		delete(s.sessionTrack.Sessions, id)
+	}
 }
 
 // GetKeepalive returns the keepalive duration in seconds

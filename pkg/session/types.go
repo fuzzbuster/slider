@@ -77,12 +77,28 @@ type RemoteSession struct {
 	ParentSessionID   int64 // Parent session ID (0 for direct connections to the reporting server)
 	ServerFingerprint string
 	interpreter.BaseInfo
+	Process        *interpreter.ProcessInfo `json:"process,omitempty"`
 	Role           string
 	WorkingDir     string // Current SFTP working directory (if active)
 	IsConnector    bool
 	IsGateway      bool
 	ConnectionAddr string
 	Path           []int64
+}
+
+func processInfoPointer(info interpreter.ProcessInfo) *interpreter.ProcessInfo {
+	sanitized := interpreter.SanitizeProcessInfo(info)
+	if sanitized.Name == "" && sanitized.PID == 0 {
+		return nil
+	}
+	return &sanitized
+}
+
+func sanitizeProcessInfoPointer(info *interpreter.ProcessInfo) *interpreter.ProcessInfo {
+	if info == nil {
+		return nil
+	}
+	return processInfoPointer(*info)
 }
 
 // certInfo stores certificate authentication information

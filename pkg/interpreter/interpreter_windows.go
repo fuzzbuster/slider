@@ -31,6 +31,7 @@ var (
 
 type Interpreter struct {
 	BaseInfo
+	ProcessInfo       ProcessInfo
 	Shell             string   `json:"Shell"`
 	ShellSeparator    string   `json:"ShellSeparator"`
 	ShellArgs         []string `json:"ShellArgs"`
@@ -44,15 +45,12 @@ type Interpreter struct {
 }
 
 type winPty struct {
-	con *conpty.LocalConPty
+	*conpty.LocalConPty
 }
 
-func (p *winPty) Read(b []byte) (n int, err error)  { return p.con.Read(b) }
-func (p *winPty) Write(b []byte) (n int, err error) { return p.con.Write(b) }
-func (p *winPty) Close() error                      { return p.con.Close() }
-func (p *winPty) Resize(cols, rows uint32) error    { return p.con.Resize(int(cols), int(rows)) }
+func (p *winPty) Resize(cols, rows uint32) error { return p.LocalConPty.Resize(int(cols), int(rows)) }
 func (p *winPty) Wait() error {
-	_, err := p.con.Wait(context.Background())
+	_, err := p.LocalConPty.Wait(context.Background())
 	return err
 }
 
@@ -69,7 +67,7 @@ func StartPty(cmd *exec.Cmd, cols, rows uint32) (Pty, error) {
 		return nil, err
 	}
 
-	return &winPty{con: c}, nil
+	return &winPty{LocalConPty: c}, nil
 }
 
 func isPtyOn() bool {
@@ -78,11 +76,13 @@ func isPtyOn() bool {
 		outHandle := windows.Handle(os.Stdout.Fd())
 		var mode uint32
 		if err := windows.GetConsoleMode(outHandle, &mode); err == nil {
-			_ = windows.SetConsoleMode(outHandle, mode|windows.ENABLE_VIRTUAL_TERMINAL_PROCESSING|windows.ENABLE_PROCESSED_OUTPUT)
+			_ = windows.SetConsoleMode(outHandle,
+				mode|windows.ENABLE_VIRTUAL_TERMINAL_PROCESSING|windows.ENABLE_PROCESSED_OUTPUT)
 		}
 		errHandle := windows.Handle(os.Stderr.Fd())
 		if err := windows.GetConsoleMode(errHandle, &mode); err == nil {
-			_ = windows.SetConsoleMode(errHandle, mode|windows.ENABLE_VIRTUAL_TERMINAL_PROCESSING|windows.ENABLE_PROCESSED_OUTPUT)
+			_ = windows.SetConsoleMode(errHandle,
+				mode|windows.ENABLE_VIRTUAL_TERMINAL_PROCESSING|windows.ENABLE_PROCESSED_OUTPUT)
 		}
 	}
 	return available
@@ -141,6 +141,7 @@ func NewInterpreter() (*Interpreter, error) {
 
 	i.Arch = runtime.GOARCH
 	i.System = runtime.GOOS
+	i.ProcessInfo = currentProcessInfo()
 	var hErr error
 	i.Hostname, hErr = os.Hostname()
 	if hErr != nil {
@@ -179,11 +180,9 @@ func NewInterpreter() (*Interpreter, error) {
 	i.AltShellArgs = pShellArgs
 	i.AltShellExecArgs = pShellExecArgs
 
-	// Capture binary path
 	if exe, err := os.Executable(); err == nil {
 		i.SliderDir = exe
 	}
-	// Capture initial working directory
 	if wd, err := os.Getwd(); err == nil {
 		i.LaunchDir = wd
 	}

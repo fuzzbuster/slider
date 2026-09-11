@@ -1,7 +1,11 @@
 package sshservice
 
 import (
+	"fmt"
 	"net"
+	"sync"
+	"sync/atomic"
+
 	"slider/pkg/instance/portforward"
 	"slider/pkg/scrypt"
 	"slider/pkg/slog"
@@ -9,21 +13,11 @@ import (
 	"golang.org/x/crypto/ssh"
 )
 
-// Service represents an SSH service that handles SSH connections
-type Service struct {
-	logger               *slog.Logger
-	sessionID            int64
-	serverKey            ssh.Signer
-	authOn               bool
-	allowedFingerprint   string
-	ptyOn                bool
-	portFwdManager       *portforward.Manager
-	clientVerificationFn func(conn ssh.ConnMetadata, key ssh.PublicKey) (*ssh.Permissions, error)
-	requestHandler       func(ssh.Channel, <-chan *ssh.Request, string)
-	channelHandler       func(ssh.NewChannel, string)
+type ChannelOpener interface {
+	OpenChannel(name string, payload []byte) (ssh.Channel, <-chan *ssh.Request, error)
+	SendRequest(name string, wantReply bool, payload []byte) (bool, []byte, error)
 }
 
-// Config holds the configuration for creating an SSH service
 type Config struct {
 	Logger             *slog.Logger
 	SessionID          int64
@@ -31,10 +25,26 @@ type Config struct {
 	AuthOn             bool
 	AllowedFingerprint string
 	PtyOn              bool
+	Opener             ChannelOpener
 	PortFwdManager     *portforward.Manager
 }
 
-// NewService creates a new SSH service
+// Service owns the protocol handling for one SSH endpoint.
+type Service struct {
+	logger             *slog.Logger
+	sessionID          int64
+	serverKey          ssh.Signer
+	authOn             bool
+	allowedFingerprint string
+	ptyOn              bool
+	useAltShell        bool
+	envVarList         []struct{ Key, Value string }
+	opener             ChannelOpener
+	portFwdManager     *portforward.Manager
+	mutex              sync.RWMutex
+	connectionCounter  atomic.Uint64
+}
+
 func NewService(cfg *Config) *Service {
 	return &Service{
 		logger:             cfg.Logger,
@@ -43,114 +53,109 @@ func NewService(cfg *Config) *Service {
 		authOn:             cfg.AuthOn,
 		allowedFingerprint: cfg.AllowedFingerprint,
 		ptyOn:              cfg.PtyOn,
+		opener:             cfg.Opener,
 		portFwdManager:     cfg.PortFwdManager,
 	}
 }
 
-// Type returns the service type identifier
-func (s *Service) Type() string {
-	return "ssh"
+func (s *Service) SetAllowedFingerprint(fingerprint string) {
+	s.mutex.Lock()
+	s.allowedFingerprint = fingerprint
+	s.mutex.Unlock()
 }
 
-// Start implements the Service interface - handles an SSH connection
-func (s *Service) Start(conn net.Conn) error {
+func (s *Service) SetPtyOn(ptyOn bool) {
+	s.mutex.Lock()
+	s.ptyOn = ptyOn
+	s.mutex.Unlock()
+}
+
+func (s *Service) SetUseAltShell(useAltShell bool) {
+	s.mutex.Lock()
+	s.useAltShell = useAltShell
+	s.mutex.Unlock()
+}
+
+func (s *Service) SetEnvVarList(envVarList []struct{ Key, Value string }) {
+	s.mutex.Lock()
+	s.envVarList = append(s.envVarList[:0], envVarList...)
+	s.mutex.Unlock()
+}
+
+func (s *Service) Serve(conn net.Conn) error {
 	defer func() { _ = conn.Close() }()
 
-	sshConf := &ssh.ServerConfig{NoClientAuth: true}
-	if s.authOn {
-		sshConf.NoClientAuth = false
-		sshConf.PublicKeyCallback = s.clientVerification
+	s.mutex.RLock()
+	serverKey := s.serverKey
+	authOn := s.authOn
+	opener := s.opener
+	s.mutex.RUnlock()
+	if serverKey == nil {
+		return fmt.Errorf("SSH server key is not configured")
 	}
-	sshConf.AddHostKey(s.serverKey)
+	if opener == nil {
+		return fmt.Errorf("SSH channel opener is not configured")
+	}
 
-	sshServerConn, sshClientChannel, reqChan, cErr := ssh.NewServerConn(conn, sshConf)
-	if cErr != nil {
-		s.logger.ErrorWith("Failed SSH handshake",
-			slog.F("session_id", s.sessionID),
-			slog.F("err", cErr))
-		return cErr
+	sshConfig := &ssh.ServerConfig{NoClientAuth: !authOn}
+	if authOn {
+		sshConfig.PublicKeyCallback = s.clientVerification
 	}
+	sshConfig.AddHostKey(serverKey)
+
+	serverConn, channels, requests, err := ssh.NewServerConn(conn, sshConfig)
+	if err != nil {
+		return fmt.Errorf("SSH handshake failed: %w", err)
+	}
+	ownerID := s.connectionCounter.Add(1)
 	defer func() {
-		_ = sshServerConn.Close()
-		s.cancelSshRemoteFwd()
+		_ = serverConn.Close()
+		if s.portFwdManager != nil {
+			s.portFwdManager.CancelSSHRemoteForwards(ownerID)
+		}
 	}()
 
-	// Service incoming SSH Request channel
-	if s.requestHandler != nil {
-		go s.requestHandler(nil, reqChan, "ssh-client")
-	} else {
-		go ssh.DiscardRequests(reqChan)
+	go s.handleGlobalRequests(serverConn, requests, ownerID)
+	for channel := range channels {
+		go s.handleChannel(serverConn, channel, ownerID)
 	}
-
-	// Handle incoming SSH channels
-	for nc := range sshClientChannel {
-		if s.channelHandler != nil {
-			go s.channelHandler(nc, nc.ChannelType())
-		} else {
-			// Default behavior: reject unknown channels
-			s.logger.WarnWith("SSH Rejected channel type",
-				slog.F("session_id", s.sessionID),
-				slog.F("channel_type", nc.ChannelType()),
-				slog.F("payload", nc.ExtraData()))
-			_ = nc.Reject(ssh.UnknownChannelType, "")
-		}
-	}
-
 	return nil
 }
 
-// Stop implements the Service interface
-func (s *Service) Stop() error {
-	// SSH service cleanup is handled in the defer of Start
+func (s *Service) Close() error {
+	if s.portFwdManager != nil {
+		s.portFwdManager.CloseAll()
+	}
 	return nil
 }
 
-// SetRequestHandler sets the handler for SSH requests
-func (s *Service) SetRequestHandler(handler func(ssh.Channel, <-chan *ssh.Request, string)) {
-	s.requestHandler = handler
+func (s *Service) isPtyOn() bool {
+	s.mutex.RLock()
+	defer s.mutex.RUnlock()
+	return s.ptyOn
 }
 
-// SetChannelHandler sets the handler for SSH channels
-func (s *Service) SetChannelHandler(handler func(ssh.NewChannel, string)) {
-	s.channelHandler = handler
-}
-
-// clientVerification verifies the client's public key
-func (s *Service) clientVerification(conn ssh.ConnMetadata, key ssh.PublicKey) (*ssh.Permissions, error) {
-	if s.clientVerificationFn != nil {
-		return s.clientVerificationFn(conn, key)
+func (s *Service) clientVerification(
+	conn ssh.ConnMetadata,
+	key ssh.PublicKey,
+) (*ssh.Permissions, error) {
+	fingerprint, err := scrypt.GenerateFingerprint(key)
+	if err != nil {
+		return nil, err
 	}
 
-	// Default verification logic
-	fp, fErr := scrypt.GenerateFingerprint(key)
-	if fErr != nil {
-		return nil, fErr
+	s.mutex.RLock()
+	allowedFingerprint := s.allowedFingerprint
+	s.mutex.RUnlock()
+	if fingerprint != allowedFingerprint {
+		return nil, fmt.Errorf("client key not authorized")
 	}
 
-	if fp == s.allowedFingerprint {
-		s.logger.DebugWith("Authenticated Client",
-			slog.F("session_id", s.sessionID),
-			slog.F("remote_addr", conn.RemoteAddr()),
-			slog.F("fingerprint", fp))
-		return &ssh.Permissions{Extensions: map[string]string{"fingerprint": fp}}, nil
-	}
-
-	s.logger.DebugWith("Rejected client",
+	s.logger.DebugWith("Authenticated SSH endpoint client",
 		slog.F("session_id", s.sessionID),
 		slog.F("remote_addr", conn.RemoteAddr()),
-		slog.F("err", "bad key authentication"))
-
-	return nil, nil
-}
-
-// cancelSshRemoteFwd cancels all SSH remote forwards
-func (s *Service) cancelSshRemoteFwd() {
-	if s.portFwdManager != nil {
-		s.portFwdManager.CancelAllSSHRemoteForwards()
-	}
-}
-
-// SetClientVerificationFn sets a custom client verification function
-func (s *Service) SetClientVerificationFn(fn func(conn ssh.ConnMetadata, key ssh.PublicKey) (*ssh.Permissions, error)) {
-	s.clientVerificationFn = fn
+		slog.F("fingerprint", fingerprint))
+	return &ssh.Permissions{
+		Extensions: map[string]string{"fingerprint": fingerprint},
+	}, nil
 }

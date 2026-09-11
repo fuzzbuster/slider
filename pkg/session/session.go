@@ -35,6 +35,7 @@ type BidirectionalSession struct {
 	// Session State
 	localInterpreter *interpreter.Interpreter // Host system info for local process execution
 	peerBaseInfo     interpreter.BaseInfo     // Remote system info received from peer
+	peerProcessInfo  interpreter.ProcessInfo  // Untrusted peer diagnostics, never used for routing
 	peerIdentity     string                   // Peer server identity (fingerprint:port) for loop detection
 	initTermSize     types.TermDimensions
 	isListener       bool  // Whether this session is to/from a listener client
@@ -49,7 +50,6 @@ type BidirectionalSession struct {
 	// Lifecycle Management
 	KeepAliveChan chan bool
 	keepAliveOn   bool
-	Disconnect    chan bool // Exported for compatibility
 	active        bool
 	sessionMutex  sync.Mutex
 
@@ -76,10 +76,9 @@ type BidirectionalSession struct {
 	sftpWorkingDir string         // Save Working dir for the next run
 
 	// Server-specific metadata
-	hostIP     string
-	certInfo   certInfo
-	notifier   chan error
-	serverAddr string // For client role
+	hostIP   string
+	certInfo certInfo
+	notifier chan error
 
 	// Remote Session Tracking (GatewayRole/AgentRole if gateway)
 	remoteSessions      map[string]RemoteSession
@@ -198,6 +197,20 @@ func (s *BidirectionalSession) SetPeerInfo(baseInfo interpreter.BaseInfo) {
 	s.sessionMutex.Lock()
 	defer s.sessionMutex.Unlock()
 	s.peerBaseInfo = baseInfo
+}
+
+// GetPeerProcessInfo returns sanitized peer process diagnostics.
+func (s *BidirectionalSession) GetPeerProcessInfo() interpreter.ProcessInfo {
+	s.sessionMutex.Lock()
+	defer s.sessionMutex.Unlock()
+	return s.peerProcessInfo
+}
+
+// SetPeerProcessInfo sanitizes and stores untrusted peer process diagnostics.
+func (s *BidirectionalSession) SetPeerProcessInfo(info interpreter.ProcessInfo) {
+	s.sessionMutex.Lock()
+	defer s.sessionMutex.Unlock()
+	s.peerProcessInfo = interpreter.SanitizeProcessInfo(info)
 }
 
 // GetLocalInterpreter returns the host (local) interpreter info

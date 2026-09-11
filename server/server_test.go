@@ -1,12 +1,50 @@
 package server
 
 import (
+	"sync"
 	"testing"
 
 	"slider/pkg/interpreter"
 	"slider/pkg/session"
 	"slider/pkg/slog"
 )
+
+func TestServerSessionRegistryConcurrentAccess(t *testing.T) {
+	srv := &server{
+		Logger: slog.NewLogger("registry-test"),
+		sessionTrack: &sessionTrack{
+			Sessions: make(map[int64]*session.BidirectionalSession),
+		},
+	}
+
+	var wg sync.WaitGroup
+	for range 32 {
+		wg.Add(1)
+		go func() {
+			defer wg.Done()
+			sess := session.NewServerFromClientSession(
+				srv.Logger,
+				nil,
+				nil,
+				nil,
+				&interpreter.Interpreter{},
+				"127.0.0.1",
+				nil,
+			)
+			srv.addSession(sess)
+			_ = srv.GetAllSessions()
+			srv.dropWebSocketSession(sess)
+		}()
+	}
+	wg.Wait()
+
+	if count := srv.activeSessionCount(); count != 0 {
+		t.Fatalf("active session count = %d, want 0", count)
+	}
+	if sessions := srv.GetAllSessions(); len(sessions) != 0 {
+		t.Fatalf("session registry contains %d entries", len(sessions))
+	}
+}
 
 // General Server Tests
 

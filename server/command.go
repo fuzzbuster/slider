@@ -25,11 +25,6 @@ type ExecutionContext struct {
 	sftpRegistry *CommandRegistry    // nil for non-sftp commands
 }
 
-// Server returns the server instance
-func (c *ExecutionContext) getServer() *server {
-	return c.server
-}
-
 // Session returns the session instance (may be nil)
 func (c *ExecutionContext) Session() *session.BidirectionalSession {
 	return c.session
@@ -85,22 +80,22 @@ func (r *CommandRegistry) RegisterAlias(alias, commandName string) {
 	}
 }
 
-// initRegistry initializes the command registry. Commands will be unavailable until registered
-func (s *server) initRegistry() {
-	s.commandRegistry = NewCommandRegistry()
-	s.commandRegistry.Register(&BgCommand{})
-	s.commandRegistry.Register(&ExitCommand{})
-	s.commandRegistry.Register(&HelpCommand{})
-	s.commandRegistry.Register(&SessionsCommand{})
-	s.commandRegistry.Register(&SocksCommand{})
-	s.commandRegistry.Register(&SSHCommand{})
-	s.commandRegistry.Register(&ConnectCommand{})
-	s.commandRegistry.Register(&ShellCommand{})
-	s.commandRegistry.Register(&PortFwdCommand{})
-	if s.authOn {
-		s.commandRegistry.Register(&CertsCommand{})
+func newServerCommandRegistry(authOn bool) *CommandRegistry {
+	registry := NewCommandRegistry()
+	registry.Register(&BgCommand{})
+	registry.Register(&ClearCommand{})
+	registry.Register(&ExitCommand{})
+	registry.Register(&HelpCommand{})
+	registry.Register(&SessionsCommand{})
+	registry.Register(&SocksCommand{})
+	registry.Register(&SSHCommand{})
+	registry.Register(&ConnectCommand{})
+	registry.Register(&ShellCommand{})
+	registry.Register(&PortFwdCommand{})
+	if authOn {
+		registry.Register(&CertsCommand{})
 	}
-	// Register other commands here as they are refactored
+	return registry
 }
 
 // Get retrieves a command by name
@@ -160,9 +155,10 @@ func (r *CommandRegistry) Autocomplete(input string) (string, int) {
 	return substring, len(substring)
 }
 
-// BaseCommand is a helper struct to embed in commands to avoid implementing all methods if not needed
-// (Though currently all methods are needed, this is just a placeholder for future extensibility)
+// BaseCommand provides defaults shared by top-level console commands.
 type BaseCommand struct{}
+
+func (BaseCommand) IsRemoteCompletion() bool { return false }
 
 // Compile-time check to ensure Console implements UserInterface
 var _ UserInterface = (*Console)(nil)
