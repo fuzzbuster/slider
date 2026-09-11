@@ -80,23 +80,22 @@ func (r *CommandRegistry) RegisterAlias(alias, commandName string) {
 	}
 }
 
-// initRegistry initializes the command registry. Commands will be unavailable until registered
-func (s *server) initRegistry() {
-	s.commandRegistry = NewCommandRegistry()
-	s.commandRegistry.Register(&BgCommand{})
-	s.commandRegistry.Register(&ClearCommand{})
-	s.commandRegistry.Register(&ExitCommand{})
-	s.commandRegistry.Register(&HelpCommand{})
-	s.commandRegistry.Register(&SessionsCommand{})
-	s.commandRegistry.Register(&SocksCommand{})
-	s.commandRegistry.Register(&SSHCommand{})
-	s.commandRegistry.Register(&ConnectCommand{})
-	s.commandRegistry.Register(&ShellCommand{})
-	s.commandRegistry.Register(&PortFwdCommand{})
-	if s.authOn {
-		s.commandRegistry.Register(&CertsCommand{})
+func newServerCommandRegistry(authOn bool) *CommandRegistry {
+	registry := NewCommandRegistry()
+	registry.Register(&BgCommand{})
+	registry.Register(&ClearCommand{})
+	registry.Register(&ExitCommand{})
+	registry.Register(&HelpCommand{})
+	registry.Register(&SessionsCommand{})
+	registry.Register(&SocksCommand{})
+	registry.Register(&SSHCommand{})
+	registry.Register(&ConnectCommand{})
+	registry.Register(&ShellCommand{})
+	registry.Register(&PortFwdCommand{})
+	if authOn {
+		registry.Register(&CertsCommand{})
 	}
-	// Register other commands here as they are refactored
+	return registry
 }
 
 // Get retrieves a command by name

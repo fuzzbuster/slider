@@ -31,6 +31,14 @@ type screenIO struct {
 	io.Writer
 }
 
+type consoleAction uint8
+
+const (
+	consoleActionContinue consoleAction = iota
+	consoleActionBackground
+	consoleActionExit
+)
+
 func (sIO screenIO) Fd() uintptr {
 	if f, ok := sIO.Reader.(*os.File); ok {
 		return f.Fd()
@@ -44,7 +52,7 @@ func (sIO screenIO) Fd() uintptr {
 func (s *server) consoleBanner(ui *Console) {
 	ui.ScreenAlignment(true)
 	ui.Printf("%s\n\n", escseq.GreyBoldText(conf.Banner))
-	ui.PrintInfo("Type \"bg\" to return to logging.")
+	ui.PrintInfo("Type \"bg\" to leave the console without stopping the Server.")
 	ui.PrintInfo("Type \"help\" to see available commands.")
 	ui.PrintInfo("Type \"exit\" to exit the console.\n")
 }
@@ -89,8 +97,6 @@ func (s *server) NewConsole() string {
 		}
 	}()
 
-	s.initRegistry()
-
 	var err error
 	s.console.InitState, err = term.GetState(int(os.Stdin.Fd()))
 	if err != nil {
@@ -106,7 +112,6 @@ func (s *server) NewConsole() string {
 	}
 
 	for consoleInput := true; consoleInput; {
-		var commandName string
 		input, err := s.console.Term.ReadLine()
 		if err != nil {
 			if err != io.EOF {
@@ -118,38 +123,21 @@ func (s *server) NewConsole() string {
 			_, _ = s.console.Term.Write([]byte{'\n'})
 			continue
 		}
-		args := append([]string(nil), strings.Fields(input)...)
-		if len(args) > 0 {
-			commandName = args[0]
-		}
-		if commandName == "" {
-			continue
-		}
 
-		if localCommand, ok := strings.CutPrefix(commandName, "!"); ok && localCommand != "" {
-			fullCommand := append([]string{localCommand}, args[1:]...)
-			s.notConsoleCommand(fullCommand)
-			continue
-		}
-
-		command := strings.ToLower(args[0])
-		ctx := &ExecutionContext{
-			server:  s,
-			session: nil,
-			ui:      &s.console,
-		}
-		err = s.commandRegistry.Execute(ctx, command, args[1:])
+		action, err := s.executeConsoleInput(&s.console, input)
 		if err != nil {
-			if errors.Is(err, ErrExitConsole) {
-				out = exitCmd
-				consoleInput = false
-			} else if errors.Is(err, ErrBackgroundConsole) {
-				out = bgCmd
-				consoleInput = false
-			} else {
-				s.console.PrintError("Error: %v", err)
-			}
-		} else {
+			s.console.PrintError("Error: %v", err)
+			continue
+		}
+		switch action {
+		case consoleActionExit:
+			out = exitCmd
+			consoleInput = false
+		case consoleActionBackground:
+			s.console.PrintlnGreyOut("Logging...")
+			out = bgCmd
+			consoleInput = false
+		default:
 			s.console.Term.SetPrompt(getPrompt())
 		}
 	}
@@ -157,22 +145,52 @@ func (s *server) NewConsole() string {
 	return out
 }
 
-func (s *server) notConsoleCommand(command []string) {
+func (s *server) executeConsoleInput(ui *Console, input string) (consoleAction, error) {
+	args := strings.Fields(input)
+	if len(args) == 0 {
+		return consoleActionContinue, nil
+	}
+
+	if localCommand, ok := strings.CutPrefix(args[0], "!"); ok && localCommand != "" {
+		command := append([]string{localCommand}, args[1:]...)
+		s.notConsoleCommand(ui, command)
+		return consoleActionContinue, nil
+	}
+
+	ctx := &ExecutionContext{server: s, ui: ui}
+	err := s.commandRegistry.Execute(ctx, strings.ToLower(args[0]), args[1:])
+	switch {
+	case errors.Is(err, ErrExitConsole):
+		return consoleActionExit, nil
+	case errors.Is(err, ErrBackgroundConsole):
+		return consoleActionBackground, nil
+	default:
+		return consoleActionContinue, err
+	}
+}
+
+func (s *server) notConsoleCommand(ui *Console, command []string) {
+	s.notConsoleCommandWithDir(ui, command, "")
+}
+
+func (s *server) notConsoleCommandWithDir(ui *Console, command []string, workingDir string) {
 	if s.serverInterpreter.Shell == "" {
-		s.console.PrintError("No Shell set")
+		ui.PrintError("No Shell set")
 		return
 	}
 
-	s.console.PrintWarn("Executing local Command: %s", command)
-	command = append(s.serverInterpreter.ShellExecArgs, strings.Join(command, " "))
+	ui.PrintWarn("Executing local Command: %s", command)
+	shellArgs := append([]string(nil), s.serverInterpreter.ShellExecArgs...)
+	shellArgs = append(shellArgs, strings.Join(command, " "))
 
 	ctx, cancel := context.WithTimeout(context.Background(), conf.Timeout)
 	defer cancel()
-	cmd := exec.CommandContext(ctx, s.serverInterpreter.Shell, command...)
-	cmd.Stdout = s.console.Term
-	cmd.Stderr = s.console.Term
+	cmd := exec.CommandContext(ctx, s.serverInterpreter.Shell, shellArgs...)
+	cmd.Dir = workingDir
+	cmd.Stdout = ui.Term
+	cmd.Stderr = ui.Term
 	if err := cmd.Run(); err != nil {
-		s.console.PrintError("%v", err)
+		ui.PrintError("%v", err)
 	}
-	s.console.Println("")
+	ui.Println("")
 }

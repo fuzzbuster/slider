@@ -1,16 +1,13 @@
 package server
 
 import (
-	"context"
 	"errors"
 	"fmt"
 	"os"
-	"os/exec"
 	"slices"
 	"strings"
 
 	"slider/pkg/completion"
-	"slider/pkg/conf"
 	"slider/pkg/escseq"
 	"slider/pkg/interpreter"
 	"slider/pkg/session"
@@ -161,7 +158,7 @@ func (s *server) newSftpConsoleWithInterpreter(ui *Console, opts SftpConsoleOpti
 				if len(after) > 0 {
 					fullCommand := []string{after}
 					fullCommand = append(fullCommand, args...)
-					s.notConsoleCommandWithDir(fullCommand, *sftpCtx.localCwd)
+					s.notConsoleCommandWithDir(ui, fullCommand, *sftpCtx.localCwd)
 					continue
 				}
 			}
@@ -233,33 +230,6 @@ func (ctx *SftpCommandContext) getSFTPPrompt() string {
 		escseq.CyanBoldText("$"),
 	)
 
-}
-
-// notConsoleCommandWithDir executes a local command from a specified working directory (SFTP-specific)
-func (s *server) notConsoleCommandWithDir(fCmd []string, workingDir string) {
-	// If a Shell was not set, just return
-	if s.serverInterpreter.Shell == "" {
-		s.console.PrintError("No Shell set")
-		return
-	}
-
-	// Else, we'll try to execute the command locally from the specified directory
-	s.console.PrintWarn("Executing local Command: %s", fCmd)
-	fCmd = append(s.serverInterpreter.ShellExecArgs, strings.Join(fCmd, " "))
-
-	// Force 10s timeout just in case:
-	// - An interactive command is executed
-	// - The command takes a long time to complete
-	ctx, cancel := context.WithTimeout(context.Background(), conf.Timeout)
-	defer cancel()
-	cmd := exec.CommandContext(ctx, s.serverInterpreter.Shell, fCmd...)
-	cmd.Dir = workingDir // Set working directory
-	cmd.Stdout = s.console.Term
-	cmd.Stderr = s.console.Term
-	if err := cmd.Run(); err != nil {
-		s.console.PrintError("%v", err)
-	}
-	s.console.Println("")
 }
 
 func fieldsWithQuotes(input string) []string {

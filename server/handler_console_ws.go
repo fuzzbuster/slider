@@ -2,7 +2,6 @@ package server
 
 import (
 	"encoding/json"
-	"errors"
 	"fmt"
 	"io"
 	"net/http"
@@ -90,23 +89,16 @@ func (s *server) handleWebSocketConsole(w http.ResponseWriter, r *http.Request) 
 			continue
 		}
 
-		parts := strings.Fields(line)
-		if len(parts) == 0 {
-			continue
-		}
-
-		ctx := &ExecutionContext{server: s, ui: webConsole}
-		command := strings.ToLower(parts[0])
-		if err := s.commandRegistry.Execute(ctx, command, parts[1:]); err != nil {
-			if errors.Is(err, ErrExitConsole) {
-				webConsole.PrintlnGreyOut("Disconnecting...")
-				return nil
-			}
+		action, err := s.executeConsoleInput(webConsole, line)
+		if err != nil {
 			s.ErrorWith("Failed to execute command",
-				slog.F("command", command),
-				slog.F("args", parts[1:]),
+				slog.F("input", line),
 				slog.F("err", err))
 			webConsole.PrintError("Error: %v", err)
+		}
+		if action == consoleActionExit || action == consoleActionBackground {
+			webConsole.PrintlnGreyOut("Disconnecting...")
+			return nil
 		}
 		webConsole.Term.SetPrompt(getPrompt())
 	}
@@ -204,14 +196,14 @@ func (s *server) newWebConsole(ptyTTY *os.File, history *session.CustomHistory) 
 	if _, err := term.MakeRaw(int(ptyTTY.Fd())); err != nil {
 		return nil, err
 	}
+	if s.commandRegistry == nil {
+		return nil, fmt.Errorf("command registry is not initialized")
+	}
 	webConsole := &Console{
 		Term:       term.NewTerminal(ptyTTY, getPrompt()),
 		ReadWriter: ptyTTY,
 		History:    history,
 		ResizeChan: make(chan types.TermDimensions, 10),
-	}
-	if s.commandRegistry == nil {
-		s.initRegistry()
 	}
 	webConsole.setConsoleAutoComplete(s.commandRegistry, s.serverInterpreter)
 	return webConsole, nil

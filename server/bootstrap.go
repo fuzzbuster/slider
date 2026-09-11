@@ -23,6 +23,11 @@ func newConfiguredServer(cfg *Config) *server {
 	}
 
 	configureServerLogger(logger, localInterpreter, cfg)
+	if !localInterpreter.PtyOn && !cfg.Headless {
+		logger.Warnf("This System does not support PTY, headless mode is enforced")
+		cfg.Headless = true
+	}
+
 	s := &server{
 		Logger: logger,
 		sshConf: &ssh.ServerConfig{
@@ -49,17 +54,13 @@ func newConfiguredServer(cfg *Config) *server {
 		serverHeader:      cfg.ServerHeader,
 		httpVersion:       cfg.HttpVersion,
 		httpHealth:        cfg.HttpHealth,
-		httpConsoleOn:     cfg.HttpConsole,
+		httpConsoleOn:     cfg.HttpConsole || cfg.Headless,
 		gateway:           cfg.Gateway,
 		customProto:       cfg.CustomProto,
+		commandRegistry:   newServerCommandRegistry(cfg.Auth),
 		remoteSessions:    make(map[remoteStateKey]*RemoteSessionState),
 		unifiedSessionIDs: make(map[SessionKey]int64),
 		authChallenges:    make(map[string]authChallenge),
-	}
-
-	if !s.serverInterpreter.PtyOn && !cfg.Headless {
-		s.Warnf("This System does not support PTY, headless mode is enforced")
-		cfg.Headless = true
 	}
 
 	configureServerHTTP(s, cfg)

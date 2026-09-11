@@ -9,9 +9,9 @@ import (
 const (
 	// Console Basic Commands
 	bgCmd     = "bg"
-	bgDesc    = "Puts Console into background and returns to logging output"
+	bgDesc    = "Leaves Console without terminating the Server"
 	exitCmd   = "exit"
-	exitDesc  = "Exits Console and terminates the Server"
+	exitDesc  = "Exits Console (terminates the Server from the local Console)"
 	helpCmd   = "help"
 	helpDesc  = "Shows this output"
 	clearCmd  = "clear"
@@ -24,8 +24,7 @@ type BgCommand struct{ BaseCommand }
 func (c *BgCommand) Name() string        { return bgCmd }
 func (c *BgCommand) Description() string { return bgDesc }
 func (c *BgCommand) Usage() string       { return bgCmd }
-func (c *BgCommand) Run(ctx *ExecutionContext, _ []string) error {
-	ctx.UI().PrintlnGreyOut("Logging...")
+func (c *BgCommand) Run(_ *ExecutionContext, _ []string) error {
 	return ErrBackgroundConsole
 }
 
