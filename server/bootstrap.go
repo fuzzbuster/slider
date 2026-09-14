@@ -55,6 +55,7 @@ func newConfiguredServer(cfg *Config) *server {
 		httpVersion:       cfg.HttpVersion,
 		httpHealth:        cfg.HttpHealth,
 		httpConsoleOn:     cfg.HttpConsole || cfg.Headless,
+		consolePaths:      listener.DefaultConsolePaths(),
 		gateway:           cfg.Gateway,
 		customProto:       cfg.CustomProto,
 		commandRegistry:   newServerCommandRegistry(cfg.Auth),
@@ -87,6 +88,14 @@ func configureServerLogger(
 }
 
 func configureServerHTTP(s *server, cfg *Config) {
+	consolePaths, err := listener.NewConsolePaths(cfg.HttpConsoleBasePath)
+	if err != nil {
+		s.FatalWith("Bad HTTP console base path",
+			slog.F("path", cfg.HttpConsoleBasePath),
+			slog.F("err", err))
+	}
+	s.consolePaths = consolePaths
+
 	if cfg.TemplatePath != "" {
 		if err := listener.CheckTemplate(cfg.TemplatePath); err != nil {
 			s.Fatalf("Wrong template: %s", err)

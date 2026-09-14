@@ -14,6 +14,7 @@ import (
 	"slider/pkg/instance"
 	"slider/pkg/instance/socks"
 	"slider/pkg/interpreter"
+	"slider/pkg/listener"
 	"slider/pkg/remote"
 	"slider/pkg/sconn"
 	"slider/pkg/scrypt"
@@ -58,6 +59,7 @@ type server struct {
 	httpVersion          bool
 	httpHealth           bool
 	httpConsoleOn        bool
+	consolePaths         listener.ConsolePaths
 	gateway              bool
 	CertificateAuthority *scrypt.CertificateAuthority
 	customProto          string

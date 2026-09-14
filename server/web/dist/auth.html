@@ -5,15 +5,15 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <meta name="color-scheme" content="dark light" />
     <title>Slider Authentication</title>
-    <script type="module" crossorigin src="/console/assets/auth-CryBph4P.js"></script>
-    <link rel="modulepreload" crossorigin href="/console/assets/theme-CM5bcWQG.js">
-    <link rel="stylesheet" crossorigin href="/console/assets/theme-DSzoMD7x.css">
-    <link rel="stylesheet" crossorigin href="/console/assets/auth-OBl4yV8z.css">
+    <script type="module" crossorigin src="{{.ConsoleAssetsPath}}auth-CryBph4P.js"></script>
+    <link rel="modulepreload" crossorigin href="{{.ConsoleAssetsPath}}theme-CM5bcWQG.js">
+    <link rel="stylesheet" crossorigin href="{{.ConsoleAssetsPath}}theme-DSzoMD7x.css">
+    <link rel="stylesheet" crossorigin href="{{.ConsoleAssetsPath}}auth-OBl4yV8z.css">
   </head>
   <body
     data-auth-path="{{.AuthPath}}"
     data-auth-login-path="{{.AuthLoginPath}}"
-    data-console-path="/console"
+    data-console-path="{{.ConsolePath}}"
   >
     <button
       class="icon-button theme-toggle"

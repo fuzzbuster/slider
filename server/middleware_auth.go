@@ -13,7 +13,7 @@ const (
 // authMiddleware creates an HTTP middleware that validates JWT tokens
 // It checks cookies first (for web clients), then Authorization header (for API clients)
 // On failure:
-//   - Browser requests (Accept: text/html): redirect to /auth
+//   - Browser requests (Accept: text/html): redirect to the configured auth page
 //   - API requests: return 401 Unauthorized
 func (s *server) authMiddleware(next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
@@ -59,7 +59,7 @@ func extractTokenFromRequest(r *http.Request) string {
 }
 
 // handleUnauthorized handles unauthorized access
-// Redirects browsers to /auth, returns 401 for API clients
+// Redirects browsers to the configured auth page, returns 401 for API clients
 func (s *server) handleUnauthorized(w http.ResponseWriter, r *http.Request, message string) {
 	// Check if request is from a browser (HTML accepted)
 	acceptHeader := r.Header.Get("Accept")
@@ -67,7 +67,7 @@ func (s *server) handleUnauthorized(w http.ResponseWriter, r *http.Request, mess
 
 	if isBrowser {
 		// Redirect to login page
-		http.Redirect(w, r, "/auth", http.StatusSeeOther)
+		http.Redirect(w, r, s.controlPaths().AuthPath, http.StatusSeeOther)
 	} else {
 		// Return JSON error for API clients
 		w.Header().Set("Content-Type", "application/json")

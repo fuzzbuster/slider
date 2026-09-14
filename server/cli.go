@@ -12,37 +12,38 @@ import (
 // NewCommand creates the server cobra command
 func NewCommand() *cobra.Command {
 	var (
-		verbose            string
-		address            string
-		port               int
-		keepalive          time.Duration
-		colorless          bool
-		auth               bool
-		certJarFile        string
-		caStore            bool
-		caStorePath        string
-		templatePath       string
-		serverHeader       string
-		httpRedirect       string
-		statusCode         int
-		httpVersion        bool
-		httpHealth         bool
-		customProto        string
-		listenerCert       string
-		listenerKey        string
-		listenerCA         string
-		jsonLog            bool
-		callerLog          bool
-		headless           bool
-		httpConsole        bool
-		gateway            bool
-		callbackURL        string
-		callbackRetry      bool
-		callbackCertID     int64
-		callbackCA         string
-		callbackServerName string
-		callbackTLSCert    string
-		callbackTLSKey     string
+		verbose             string
+		address             string
+		port                int
+		keepalive           time.Duration
+		colorless           bool
+		auth                bool
+		certJarFile         string
+		caStore             bool
+		caStorePath         string
+		templatePath        string
+		serverHeader        string
+		httpRedirect        string
+		statusCode          int
+		httpVersion         bool
+		httpHealth          bool
+		customProto         string
+		listenerCert        string
+		listenerKey         string
+		listenerCA          string
+		jsonLog             bool
+		callerLog           bool
+		headless            bool
+		httpConsole         bool
+		httpConsoleBasePath string
+		gateway             bool
+		callbackURL         string
+		callbackRetry       bool
+		callbackCertID      int64
+		callbackCA          string
+		callbackServerName  string
+		callbackTLSCert     string
+		callbackTLSKey      string
 	)
 
 	cmd := &cobra.Command{
@@ -58,37 +59,38 @@ its integrated Console by pressing CTR^C at any time.`,
 		RunE: func(cmd *cobra.Command, args []string) error {
 			// Build configuration from flags
 			cfg := &Config{
-				Verbose:            verbose,
-				Address:            address,
-				Port:               port,
-				Keepalive:          keepalive,
-				Colorless:          colorless,
-				Auth:               auth,
-				CertJarFile:        certJarFile,
-				CaStore:            caStore,
-				CaStorePath:        caStorePath,
-				TemplatePath:       templatePath,
-				ServerHeader:       serverHeader,
-				HttpRedirect:       httpRedirect,
-				StatusCode:         statusCode,
-				HttpVersion:        httpVersion,
-				HttpHealth:         httpHealth,
-				CustomProto:        customProto,
-				ListenerCert:       listenerCert,
-				ListenerKey:        listenerKey,
-				ListenerCA:         listenerCA,
-				JsonLog:            jsonLog,
-				CallerLog:          callerLog,
-				Headless:           headless,
-				HttpConsole:        httpConsole,
-				Gateway:            gateway,
-				CallbackURL:        callbackURL,
-				CallbackRetry:      callbackRetry,
-				CallbackCertID:     callbackCertID,
-				CallbackCA:         callbackCA,
-				CallbackServerName: callbackServerName,
-				CallbackTLSCert:    callbackTLSCert,
-				CallbackTLSKey:     callbackTLSKey,
+				Verbose:             verbose,
+				Address:             address,
+				Port:                port,
+				Keepalive:           keepalive,
+				Colorless:           colorless,
+				Auth:                auth,
+				CertJarFile:         certJarFile,
+				CaStore:             caStore,
+				CaStorePath:         caStorePath,
+				TemplatePath:        templatePath,
+				ServerHeader:        serverHeader,
+				HttpRedirect:        httpRedirect,
+				StatusCode:          statusCode,
+				HttpVersion:         httpVersion,
+				HttpHealth:          httpHealth,
+				CustomProto:         customProto,
+				ListenerCert:        listenerCert,
+				ListenerKey:         listenerKey,
+				ListenerCA:          listenerCA,
+				JsonLog:             jsonLog,
+				CallerLog:           callerLog,
+				Headless:            headless,
+				HttpConsole:         httpConsole,
+				HttpConsoleBasePath: httpConsoleBasePath,
+				Gateway:             gateway,
+				CallbackURL:         callbackURL,
+				CallbackRetry:       callbackRetry,
+				CallbackCertID:      callbackCertID,
+				CallbackCA:          callbackCA,
+				CallbackServerName:  callbackServerName,
+				CallbackTLSCert:     callbackTLSCert,
+				CallbackTLSKey:      callbackTLSKey,
 			}
 
 			// Call the RunServer function
@@ -120,6 +122,8 @@ its integrated Console by pressing CTR^C at any time.`,
 	cmd.Flags().BoolVar(&headless, "headless", false,
 		"Disables the internal console (CTR^C) and enables the Websocket Console")
 	cmd.Flags().BoolVar(&httpConsole, "http-console", false, "Enables /console HTTP endpoint")
+	cmd.Flags().StringVar(&httpConsoleBasePath, "http-console-base-path", "",
+		"Base path for HTTP console routes")
 	cmd.Flags().BoolVar(&gateway, "gateway", false, "Enables Gateway mode (allows server chaining)")
 	cmd.Flags().StringVar(&callbackURL, "callback", "",
 		"Connect to server on startup and offer control (requires --gateway)")

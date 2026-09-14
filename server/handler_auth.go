@@ -188,7 +188,7 @@ func (s *server) handleAuthToken(w http.ResponseWriter, r *http.Request) {
 	http.SetCookie(w, &http.Cookie{
 		Name:     SliderTokenCookie,
 		Value:    token,
-		Path:     "/",
+		Path:     s.controlPaths().RootPath,
 		MaxAge:   int(DefaultTokenLifetime.Seconds()),
 		HttpOnly: true,
 		Secure:   true,
@@ -244,7 +244,7 @@ func (s *server) handleLogout(w http.ResponseWriter, r *http.Request) {
 	http.SetCookie(w, &http.Cookie{
 		Name:     SliderTokenCookie,
 		Value:    "",
-		Path:     "/",
+		Path:     s.controlPaths().RootPath,
 		MaxAge:   -1,
 		HttpOnly: true,
 		Secure:   true,

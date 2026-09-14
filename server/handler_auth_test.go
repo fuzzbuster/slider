@@ -10,6 +10,7 @@ import (
 	"testing"
 
 	"slider/pkg/auth"
+	"slider/pkg/listener"
 	"slider/pkg/scrypt"
 	"slider/pkg/slog"
 )
@@ -112,5 +113,64 @@ func TestAuthRequiresPrivateKeyProof(t *testing.T) {
 	replayRecorder := performJSONRequest(t, s.handleAuthToken, tokenRequest)
 	if replayRecorder.Code != http.StatusUnauthorized {
 		t.Fatalf("challenge replay returned %d", replayRecorder.Code)
+	}
+}
+
+func TestAuthCookieUsesConsoleBasePath(t *testing.T) {
+	s, keyPair := newAuthTestServer(t)
+	consolePaths, err := listener.NewConsolePaths("/admin")
+	if err != nil {
+		t.Fatal(err)
+	}
+	s.consolePaths = consolePaths
+
+	challengeRecorder := performJSONRequest(t, s.handleAuthChallenge, ChallengeRequest{
+		Fingerprint: keyPair.FingerPrint,
+	})
+	if challengeRecorder.Code != http.StatusOK {
+		t.Fatalf("challenge request returned %d: %s", challengeRecorder.Code, challengeRecorder.Body.String())
+	}
+
+	var challenge ChallengeResponse
+	if err := json.NewDecoder(challengeRecorder.Body).Decode(&challenge); err != nil {
+		t.Fatal(err)
+	}
+	challengeBytes, err := base64.RawStdEncoding.DecodeString(challenge.Challenge)
+	if err != nil {
+		t.Fatal(err)
+	}
+	signer, err := scrypt.SignerFromKey(keyPair.PrivateKey)
+	if err != nil {
+		t.Fatal(err)
+	}
+	signature, err := signer.Sign(rand.Reader, auth.ChallengeMessage(challengeBytes))
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	tokenRecorder := performJSONRequest(t, s.handleAuthToken, TokenRequest{
+		Fingerprint: keyPair.FingerPrint,
+		ChallengeID: challenge.ChallengeID,
+		Signature:   base64.RawStdEncoding.EncodeToString(signature.Blob),
+	})
+	if tokenRecorder.Code != http.StatusOK {
+		t.Fatalf("token request returned %d: %s", tokenRecorder.Code, tokenRecorder.Body.String())
+	}
+	cookies := tokenRecorder.Result().Cookies()
+	if len(cookies) != 1 {
+		t.Fatalf("cookie count = %d, want 1", len(cookies))
+	}
+	if cookies[0].Path != "/admin" {
+		t.Fatalf("cookie path = %q, want %q", cookies[0].Path, "/admin")
+	}
+
+	logoutRecorder := httptest.NewRecorder()
+	s.handleLogout(logoutRecorder, httptest.NewRequest(http.MethodPost, "/admin/auth/logout", nil))
+	logoutCookies := logoutRecorder.Result().Cookies()
+	if len(logoutCookies) != 1 {
+		t.Fatalf("logout cookie count = %d, want 1", len(logoutCookies))
+	}
+	if logoutCookies[0].Path != "/admin" {
+		t.Fatalf("logout cookie path = %q, want %q", logoutCookies[0].Path, "/admin")
 	}
 }

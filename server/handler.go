@@ -12,6 +12,7 @@ import (
 
 // buildRouter creates the HTTP router with all configured endpoints
 func (s *server) buildRouter() http.Handler {
+	consolePaths := s.controlPaths()
 	mux := listener.NewRouter(&listener.RouterConfig{
 		TemplatePath: s.templatePath,
 		ServerHeader: s.serverHeader,
@@ -21,21 +22,22 @@ func (s *server) buildRouter() http.Handler {
 		VersionOn:    s.httpVersion,
 		ConsoleOn:    s.httpConsoleOn,
 		AuthOn:       s.authOn,
+		ConsolePaths: consolePaths,
 	})
 
 	if s.httpConsoleOn {
-		mux.HandleFunc(listener.ConsoleAssetsPath, s.handleConsoleAsset)
+		mux.HandleFunc(consolePaths.ConsoleAssetsPath, s.handleConsoleAsset)
 		if s.authOn {
-			mux.HandleFunc(listener.AuthPath, s.handleAuthPage)
-			mux.HandleFunc(listener.AuthChallengePath, s.handleAuthChallenge)
-			mux.HandleFunc(listener.AuthLoginPath, s.handleAuthToken)
-			mux.HandleFunc(listener.AuthLogoutPath, s.handleLogout)
-			mux.Handle(listener.ConsolePath, s.authMiddleware(http.HandlerFunc(s.handleConsolePage)))
+			mux.HandleFunc(consolePaths.AuthPath, s.handleAuthPage)
+			mux.HandleFunc(consolePaths.AuthChallengePath, s.handleAuthChallenge)
+			mux.HandleFunc(consolePaths.AuthLoginPath, s.handleAuthToken)
+			mux.HandleFunc(consolePaths.AuthLogoutPath, s.handleLogout)
+			mux.Handle(consolePaths.ConsolePath, s.authMiddleware(http.HandlerFunc(s.handleConsolePage)))
 		} else {
-			mux.Handle(listener.ConsolePath, http.HandlerFunc(s.handleConsolePage))
+			mux.Handle(consolePaths.ConsolePath, http.HandlerFunc(s.handleConsolePage))
 		}
 
-		mux.HandleFunc(listener.ConsoleWsPath, func(w http.ResponseWriter, r *http.Request) {
+		mux.HandleFunc(consolePaths.ConsoleWsPath, func(w http.ResponseWriter, r *http.Request) {
 			if strings.EqualFold(r.Header.Get("Upgrade"), "websocket") {
 				_ = s.handleWebSocketConsole(w, r)
 				return
@@ -60,6 +62,13 @@ func (s *server) buildRouter() http.Handler {
 		}
 		mux.ServeHTTP(w, r)
 	})
+}
+
+func (s *server) controlPaths() listener.ConsolePaths {
+	if s.consolePaths.AuthPath == "" {
+		return listener.DefaultConsolePaths()
+	}
+	return s.consolePaths
 }
 
 func (s *server) handleWebSocket(w http.ResponseWriter, r *http.Request) {

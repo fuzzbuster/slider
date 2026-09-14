@@ -7,16 +7,17 @@ import (
 	"net/http"
 	"sync"
 
-	"slider/pkg/listener"
 	"slider/pkg/slog"
 )
 
 type consolePageData struct {
-	AuthOn         bool
-	AuthPath       string
-	AuthLoginPath  string
-	AuthLogoutPath string
-	ConsoleWsPath  string
+	AuthOn            bool
+	AuthPath          string
+	AuthLoginPath     string
+	AuthLogoutPath    string
+	ConsolePath       string
+	ConsoleAssetsPath string
+	ConsoleWsPath     string
 }
 
 var (
@@ -28,7 +29,6 @@ var (
 	templatesErr  error
 
 	webRoot, webRootErr = fs.Sub(webFS, "web/dist")
-	webAssetHandler     = http.StripPrefix(listener.ConsolePath+"/", http.FileServer(http.FS(webRoot)))
 )
 
 // loadTemplates loads and parses all HTML templates
@@ -40,12 +40,15 @@ func loadTemplates() (*template.Template, error) {
 }
 
 func (s *server) pageData() consolePageData {
+	consolePaths := s.controlPaths()
 	return consolePageData{
-		AuthOn:         s.authOn,
-		AuthPath:       listener.AuthPath,
-		AuthLoginPath:  listener.AuthLoginPath,
-		AuthLogoutPath: listener.AuthLogoutPath,
-		ConsoleWsPath:  listener.ConsoleWsPath,
+		AuthOn:            s.authOn,
+		AuthPath:          consolePaths.AuthPath,
+		AuthLoginPath:     consolePaths.AuthLoginPath,
+		AuthLogoutPath:    consolePaths.AuthLogoutPath,
+		ConsolePath:       consolePaths.ConsolePath,
+		ConsoleAssetsPath: consolePaths.ConsoleAssetsPath,
+		ConsoleWsPath:     consolePaths.ConsoleWsPath,
 	}
 }
 
@@ -55,7 +58,8 @@ func (s *server) handleConsoleAsset(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
 		return
 	}
-	if r.URL.Path == listener.ConsoleAssetsPath {
+	consolePaths := s.controlPaths()
+	if r.URL.Path == consolePaths.ConsoleAssetsPath {
 		http.NotFound(w, r)
 		return
 	}
@@ -66,7 +70,7 @@ func (s *server) handleConsoleAsset(w http.ResponseWriter, r *http.Request) {
 	}
 
 	w.Header().Set("Cache-Control", "public, max-age=31536000, immutable")
-	webAssetHandler.ServeHTTP(w, r)
+	http.StripPrefix(consolePaths.ConsolePath+"/", http.FileServer(http.FS(webRoot))).ServeHTTP(w, r)
 }
 
 // handleAuthPage serves the authentication/login page
@@ -83,7 +87,7 @@ func (s *server) handleAuthPage(w http.ResponseWriter, r *http.Request) {
 		// Validate the token
 		if _, _, err := s.validateToken(token); err == nil {
 			// Valid token, redirect to console
-			http.Redirect(w, r, "/console", http.StatusSeeOther)
+			http.Redirect(w, r, s.controlPaths().ConsolePath, http.StatusSeeOther)
 			return
 		}
 		// Invalid token, continue to show login page

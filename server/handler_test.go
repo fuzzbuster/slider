@@ -180,3 +180,81 @@ func TestWebFrontendRoutes(t *testing.T) {
 		t.Fatalf("disabled console asset returned %d, want 404", disabledRecorder.Code)
 	}
 }
+
+func TestWebFrontendRoutesWithConsoleBasePath(t *testing.T) {
+	consolePaths, err := listener.NewConsolePaths("/admin")
+	if err != nil {
+		t.Fatal(err)
+	}
+	s := &server{
+		Logger:        slog.NewLogger("web-frontend-base-path-test"),
+		httpConsoleOn: true,
+		consolePaths:  consolePaths,
+		urlRedirect:   &url.URL{},
+	}
+	handler := s.buildRouter()
+
+	pageRequest := httptest.NewRequest(http.MethodGet, "/admin/console", nil)
+	pageRecorder := httptest.NewRecorder()
+	handler.ServeHTTP(pageRecorder, pageRequest)
+	if pageRecorder.Code != http.StatusOK {
+		t.Fatalf("console page returned %d", pageRecorder.Code)
+	}
+
+	body := pageRecorder.Body.String()
+	for _, want := range []string{
+		`src="/admin/console/assets/`,
+		`href="/admin/console/assets/`,
+		`data-auth-path="/admin/auth"`,
+		`data-auth-logout-path="/admin/auth/logout"`,
+		`data-console-ws-path="/admin/console/ws"`,
+	} {
+		if !strings.Contains(body, want) {
+			t.Fatalf("console page does not contain %q", want)
+		}
+	}
+
+	assetPath := regexp.MustCompile(`/admin/console/assets/[^"]+\.js`).FindString(body)
+	if assetPath == "" {
+		t.Fatal("console page does not reference a prefixed embedded JavaScript asset")
+	}
+	assetRequest := httptest.NewRequest(http.MethodGet, assetPath, nil)
+	assetRecorder := httptest.NewRecorder()
+	handler.ServeHTTP(assetRecorder, assetRequest)
+	if assetRecorder.Code != http.StatusOK {
+		t.Fatalf("console asset returned %d", assetRecorder.Code)
+	}
+
+	unprefixedRecorder := httptest.NewRecorder()
+	handler.ServeHTTP(unprefixedRecorder, httptest.NewRequest(http.MethodGet, listener.ConsolePath, nil))
+	if unprefixedRecorder.Code != http.StatusNotFound {
+		t.Fatalf("unprefixed console returned %d, want 404", unprefixedRecorder.Code)
+	}
+}
+
+func TestAuthRedirectUsesConsoleBasePath(t *testing.T) {
+	consolePaths, err := listener.NewConsolePaths("/admin")
+	if err != nil {
+		t.Fatal(err)
+	}
+	s := &server{
+		Logger:       slog.NewLogger("auth-base-path-test"),
+		authOn:       true,
+		consolePaths: consolePaths,
+	}
+	handler := s.authMiddleware(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.WriteHeader(http.StatusNoContent)
+	}))
+
+	request := httptest.NewRequest(http.MethodGet, "/admin/console", nil)
+	request.Header.Set("Accept", "text/html")
+	recorder := httptest.NewRecorder()
+	handler.ServeHTTP(recorder, request)
+
+	if recorder.Code != http.StatusSeeOther {
+		t.Fatalf("status = %d, want %d", recorder.Code, http.StatusSeeOther)
+	}
+	if location := recorder.Header().Get("Location"); location != "/admin/auth" {
+		t.Fatalf("Location = %q, want %q", location, "/admin/auth")
+	}
+}

@@ -9,6 +9,133 @@ import (
 	"testing"
 )
 
+func TestNewConsolePaths(t *testing.T) {
+	tests := []struct {
+		name        string
+		basePath    string
+		wantBase    string
+		wantRoot    string
+		wantAuth    string
+		wantConsole string
+	}{
+		{
+			name:        "empty",
+			wantRoot:    "/",
+			wantAuth:    "/auth",
+			wantConsole: "/console",
+		},
+		{
+			name:        "slash",
+			basePath:    "/",
+			wantRoot:    "/",
+			wantAuth:    "/auth",
+			wantConsole: "/console",
+		},
+		{
+			name:        "missing leading slash",
+			basePath:    "admin",
+			wantBase:    "/admin",
+			wantRoot:    "/admin",
+			wantAuth:    "/admin/auth",
+			wantConsole: "/admin/console",
+		},
+		{
+			name:        "trailing slash",
+			basePath:    "/admin/",
+			wantBase:    "/admin",
+			wantRoot:    "/admin",
+			wantAuth:    "/admin/auth",
+			wantConsole: "/admin/console",
+		},
+		{
+			name:        "nested",
+			basePath:    "/ops/slider",
+			wantBase:    "/ops/slider",
+			wantRoot:    "/ops/slider",
+			wantAuth:    "/ops/slider/auth",
+			wantConsole: "/ops/slider/console",
+		},
+	}
+
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			paths, err := NewConsolePaths(tc.basePath)
+			if err != nil {
+				t.Fatal(err)
+			}
+			if paths.BasePath != tc.wantBase {
+				t.Fatalf("BasePath = %q, want %q", paths.BasePath, tc.wantBase)
+			}
+			if paths.RootPath != tc.wantRoot {
+				t.Fatalf("RootPath = %q, want %q", paths.RootPath, tc.wantRoot)
+			}
+			if paths.AuthPath != tc.wantAuth {
+				t.Fatalf("AuthPath = %q, want %q", paths.AuthPath, tc.wantAuth)
+			}
+			if paths.ConsolePath != tc.wantConsole {
+				t.Fatalf("ConsolePath = %q, want %q", paths.ConsolePath, tc.wantConsole)
+			}
+			if paths.AuthChallengePath != tc.wantAuth+"/challenge" {
+				t.Fatalf("AuthChallengePath = %q, want %q", paths.AuthChallengePath, tc.wantAuth+"/challenge")
+			}
+			if paths.ConsoleWsPath != tc.wantConsole+"/ws" {
+				t.Fatalf("ConsoleWsPath = %q, want %q", paths.ConsoleWsPath, tc.wantConsole+"/ws")
+			}
+			if paths.ConsoleAssetsPath != tc.wantConsole+"/assets/" {
+				t.Fatalf("ConsoleAssetsPath = %q, want %q", paths.ConsoleAssetsPath, tc.wantConsole+"/assets/")
+			}
+		})
+	}
+}
+
+func TestNewConsolePathsRejectsInvalidBasePath(t *testing.T) {
+	for _, basePath := range []string{
+		"https://example.com/admin",
+		"/admin?debug=true",
+		"/admin#fragment",
+		`admin\console`,
+		"/admin/../console",
+		"/health",
+		"/version",
+	} {
+		t.Run(basePath, func(t *testing.T) {
+			if _, err := NewConsolePaths(basePath); err == nil {
+				t.Fatal("expected error")
+			}
+		})
+	}
+}
+
+func TestTemplateHandlerRedirectsToConsoleBasePath(t *testing.T) {
+	consolePaths, err := NewConsolePaths("/admin")
+	if err != nil {
+		t.Fatal(err)
+	}
+	cfg := &RouterConfig{
+		ConsoleOn:    true,
+		AuthOn:       true,
+		ConsolePaths: consolePaths,
+	}
+	mux := NewRouter(cfg)
+
+	for _, requestPath := range []string{"/", "/admin", "/admin/"} {
+		t.Run(requestPath, func(t *testing.T) {
+			req := httptest.NewRequest(http.MethodGet, requestPath, nil)
+			w := httptest.NewRecorder()
+
+			mux.ServeHTTP(w, req)
+
+			resp := w.Result()
+			if resp.StatusCode != http.StatusFound {
+				t.Fatalf("status = %d, want %d", resp.StatusCode, http.StatusFound)
+			}
+			if location := resp.Header.Get("Location"); location != "/admin/auth" {
+				t.Fatalf("Location = %q, want %q", location, "/admin/auth")
+			}
+		})
+	}
+}
+
 func TestHealthHandler(t *testing.T) {
 	cfg := &RouterConfig{
 		HealthOn:     true,
