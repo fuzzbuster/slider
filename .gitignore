@@ -12,5 +12,3 @@ playwright-report/
 test-results/
 .DS_Store
 .trae/*
-!.trae/deepwiki/
-!.trae/deepwiki/**
