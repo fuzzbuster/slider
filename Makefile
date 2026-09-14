@@ -4,6 +4,7 @@
 
 # Set variables
 BUILD_DIR := build
+DEPLOY_DIR := deploy
 
 # UPX better compression by default
 UPX_BRUTE ?= no
@@ -35,7 +36,7 @@ $(BUILD_DIR):
 .PHONY: all
 all: clean $(BUILD_DIR) macos-arm64 macos-amd64 windows-x86 windows-amd64 windows-arm64 linux-x86 linux-amd64 linux-arm64
 
-.PHONY: test test-race test-e2e test-e2e-web test-e2e-extended web-build web-typecheck web-check
+.PHONY: test test-race test-e2e test-e2e-web test-e2e-extended web-build web-typecheck web-check deploy-init deploy-check-env deploy-config deploy-build deploy-up deploy-down deploy-pull deploy-ps deploy-logs
 test:
 	go test ./...
 
@@ -66,6 +67,9 @@ test-e2e-web:
 
 test-e2e-extended:
 	SLIDER_E2E_LARGE=1 SLIDER_E2E_INTERACTIVE=1 go test -tags=e2e -count=1 ./e2e
+
+deploy-init deploy-check-env deploy-config deploy-build deploy-up deploy-down deploy-pull deploy-ps deploy-logs:
+	$(MAKE) -C $(DEPLOY_DIR) $@
 
 # Build for common platforms for quick testing
 .PHONY: basic

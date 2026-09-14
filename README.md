@@ -62,6 +62,9 @@ make web-build
 make web-check
 ```
 
+For a container deployment with separate Caddy control and data hostnames, see
+[deploy/README.md](deploy/README.md).
+
 ## Server
 
 ```
@@ -75,38 +78,39 @@ Usage:
   slider server [flags]
 
 Flags:
-      --address string               Server will bind to this address (default "0.0.0.0")
-      --auth                         Requires authentication throughout the server
-      --ca-store                     Store Server JSON with key and CA for later use
-      --ca-store-path string         Path for reading and/or storing a Server JSON
-      --callback string              Connect to server on startup and offer control (requires --gateway)
-      --callback-ca string           CA certificate for callback server verification
-      --callback-cert-id int         Certificate ID used to authenticate callback host key
-      --callback-retry               Retry callback connection indefinitely
-      --callback-server-name string  Server name for callback TLS verification
-      --callback-tls-cert string     TLS client certificate for callback
-      --callback-tls-key string      TLS client key for callback
-      --caller-log                   Display caller information in logs
-      --certs string                 Path of a valid slider-certs json file
-      --colorless                    Disables logging colors
-      --gateway                      Enables Gateway mode (allows server chaining)
-      --headless                     Disables the internal console (CTR^C) and enables the Websocket Console
-  -h, --help                         help for server
-      --http-console                 Enables /console HTTP endpoint
-      --http-health                  Enables /health HTTP path
-      --http-redirect string         Redirects incoming HTTP to given URL
-      --http-server-header string    Sets a server header value
-      --http-status-code int         Status code [200|301|302|400|401|403|500|502|503] (default 200)
-      --http-template string         Path of a default file to serve
-      --http-version                 Enables /version HTTP path
-      --json-log                     Enables JSON formatted logging
-      --keepalive duration           Sets keepalive interval vs Clients (default 1m0s)
-      --listener-ca string           CA for verifying client certificates
-      --listener-cert string         Certificate for SSL listener
-      --listener-key string          Key for SSL listener
-      --port int                     port where Server will listen (default 8080)
-      --proto string                 Set your own proto string (default "slider-v1")
-      --verbose string               Adds verbosity [debug|info|warn|error|off] (default "info")
+      --address string                  Server will bind to this address (default "0.0.0.0")
+      --auth                            Requires authentication throughout the server
+      --ca-store                        Store Server JSON with key and CA for later use
+      --ca-store-path string            Path for reading and/or storing a Server JSON
+      --callback string                 Connect to server on startup and offer control (requires --gateway)
+      --callback-ca string              CA certificate for callback server verification
+      --callback-cert-id int            Certificate ID used to authenticate callback host key
+      --callback-retry                  Retry callback connection indefinitely
+      --callback-server-name string     Server name for callback TLS verification
+      --callback-tls-cert string        TLS client certificate for callback
+      --callback-tls-key string         TLS client key for callback
+      --caller-log                      Display caller information in logs
+      --certs string                    Path of a valid slider-certs json file
+      --colorless                       Disables logging colors
+      --gateway                         Enables Gateway mode (allows server chaining)
+      --headless                        Disables the internal console (CTR^C) and enables the Websocket Console
+  -h, --help                            help for server
+      --http-console                    Enables /console HTTP endpoint
+      --http-console-base-path string   Base path for HTTP console routes
+      --http-health                     Enables /health HTTP path
+      --http-redirect string            Redirects incoming HTTP to given URL
+      --http-server-header string       Sets a server header value
+      --http-status-code int            Status code [200|301|302|400|401|403|500|502|503] (default 200)
+      --http-template string            Path of a default file to serve
+      --http-version                    Enables /version HTTP path
+      --json-log                        Enables JSON formatted logging
+      --keepalive duration              Sets keepalive interval vs Clients (default 1m0s)
+      --listener-ca string              CA for verifying client certificates
+      --listener-cert string            Certificate for SSL listener
+      --listener-key string             Key for SSL listener
+      --port int                        port where Server will listen (default 8080)
+      --proto string                    Set your own proto string (default "slider-v2")
+      --verbose string                  Adds verbosity [debug|info|warn|error|off] (default "info")
 ```
 
 ### Environment Variables
@@ -208,6 +212,12 @@ If `--auth` is enabled then authentication will be required to access the Websoc
 In order to avoid sending credentials in plain text, enabling authentication also requires the server using TLS, otherwise it will refuse to start.
 If `--http-template` and `--http-redirect` are not provided, then the root path will redirect you to the authentication page (if `auth` is enabled) or directly to the console (if `auth` is disabled).
 
+##### `--http-console-base-path`:
+Optional base path for the HTTP console. For example, `--http-console-base-path /admin`
+serves the console at `/admin/console`, authentication at `/admin/auth`, static
+assets at `/admin/console/assets/`, and the console WebSocket at
+`/admin/console/ws`. Empty and `/` preserve the default root paths.
+
 ##### `--headless`:
 Disabled by default. If enabled, it will disable the internal Console (accessed by CTR^C) and enable the Websocket Console.
 
@@ -216,7 +226,7 @@ Choose the log level verbosity between debug, info, warn and error. When verbosi
 fatal logs will be shown.
 
 ##### `--proto`:
-Slider uses its own proto value (e.g. `slider-v1`), to ensure that only matching protocols are allowed to proceed
+Slider uses its own proto value (e.g. `slider-v2`), to ensure that only matching protocols are allowed to proceed
 with the websocket upgrade. Among other things to avoid future compatibility issues.
 
 This parameter allows you to specify your own proto value which can be handy, IF:
@@ -394,7 +404,7 @@ Usage: Usage: connect [flags] <host_address:port>
   -d, --dns string        Use custom DNS resolver
   -f, --fingerprint string Expected SSH host fingerprint
   -g, --gateway           Connect to another server in gateway mode
-  -p, --proto string      Use custom proto (default "slider-v1")
+  -p, --proto string      Use custom proto (default "slider-v2")
       --server-name string Server name for TLS verification
   -t, --tls-cert string   Use custom client TLS certificate
   -k, --tls-key string    Use custom client TLS key
@@ -652,7 +662,7 @@ Flags:
       --listener-cert string        Certificate for SSL listener
       --listener-key string         Key for SSL listener
       --port int                    Listener port (default 8081)
-      --proto string                Set your own proto string (default "slider-v1")
+      --proto string                Set your own proto string (default "slider-v2")
       --retry                       Retries reconnection indefinitely
       --server-ca string            CA certificate for verifying the server
       --server-name string          Server name for TLS verification

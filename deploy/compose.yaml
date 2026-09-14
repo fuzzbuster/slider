@@ -1,0 +1,154 @@
+name: slider
+
+services:
+  certgen:
+    image: ${SLIDER_CERTGEN_IMAGE:-slider-certgen:local}
+    build:
+      context: ..
+      dockerfile: deploy/Dockerfile
+      target: certgen
+    restart: "no"
+    network_mode: none
+    read_only: true
+    cap_drop:
+      - ALL
+    cap_add:
+      - CHOWN
+    security_opt:
+      - no-new-privileges:true
+    tmpfs:
+      - /tmp:rw,noexec,nosuid,size=16m
+    volumes:
+      - slider_tls_server:/server-tls
+      - slider_tls_trust:/trust-tls
+
+  slider:
+    image: ${SLIDER_IMAGE:-slider:local}
+    build:
+      context: ..
+      dockerfile: deploy/Dockerfile
+      args:
+        VERSION: ${SLIDER_VERSION:-development}
+        COMMIT: ${SLIDER_COMMIT:-unknown}
+        BUILD_DATE: ${SLIDER_BUILD_DATE:-unknown}
+    command:
+      - server
+      - --address=0.0.0.0
+      - --port=8080
+      - --proto=${SLIDER_PROTOCOL:-slider-v2}
+      - --headless
+      - --auth
+      - --http-console-base-path=${CONTROL_BASE_PATH:-}
+      - --ca-store
+      - --ca-store-path=/data/server-certs.json
+      - --certs=/data/client-certs.json
+      - --http-health
+      - --listener-cert=/tls/server.crt
+      - --listener-key=/tls/server.key
+      - --json-log
+      - --colorless
+    depends_on:
+      certgen:
+        condition: service_completed_successfully
+    restart: unless-stopped
+    init: true
+    read_only: true
+    cap_drop:
+      - ALL
+    security_opt:
+      - no-new-privileges:true
+    tmpfs:
+      - /tmp:rw,noexec,nosuid,size=16m
+    volumes:
+      - slider_data:/data
+      - slider_tls_server:/tls:ro
+    expose:
+      - "8080"
+    healthcheck:
+      test:
+        - CMD
+        - wget
+        - --no-check-certificate
+        - -q
+        - -O
+        - /dev/null
+        - https://127.0.0.1:8080/health
+      interval: 10s
+      timeout: 3s
+      retries: 5
+      start_period: 10s
+    logging:
+      driver: json-file
+      options:
+        max-size: 10m
+        max-file: "5"
+    stop_grace_period: 30s
+    networks:
+      - backend
+
+  caddy:
+    image: caddy:2.10.2-alpine
+    restart: unless-stopped
+    depends_on:
+      slider:
+        condition: service_healthy
+    environment:
+      ACME_EMAIL: ${ACME_EMAIL:?set ACME_EMAIL in .env}
+      CONTROL_ALLOWED_CIDRS: "${CONTROL_ALLOWED_CIDRS:-0.0.0.0/0 ::/0}"
+      CONTROL_DOMAIN: ${CONTROL_DOMAIN:?set CONTROL_DOMAIN in .env}
+      DATA_DOMAIN: ${DATA_DOMAIN:?set DATA_DOMAIN in .env}
+      SLIDER_PROTOCOL: ${SLIDER_PROTOCOL:-slider-v2}
+    ports:
+      - "${HTTP_PORT:-80}:80"
+      - "${HTTPS_PORT:-443}:443"
+      - "${HTTPS_PORT:-443}:443/udp"
+    extra_hosts:
+      - "${CONTROL_DOMAIN:?set CONTROL_DOMAIN in .env}:127.0.0.1"
+      - "${DATA_DOMAIN:?set DATA_DOMAIN in .env}:127.0.0.1"
+    read_only: true
+    cap_drop:
+      - ALL
+    cap_add:
+      - NET_BIND_SERVICE
+    security_opt:
+      - no-new-privileges:true
+    tmpfs:
+      - /tmp:rw,noexec,nosuid,size=16m
+    volumes:
+      - ./caddy/Caddyfile:/etc/caddy/Caddyfile:ro
+      - caddy_data:/data
+      - caddy_config:/config
+      - slider_tls_trust:/tls:ro
+    healthcheck:
+      test:
+        - CMD-SHELL
+        - >-
+          wget -q -O /dev/null
+          "https://$${CONTROL_DOMAIN}/.well-known/slider-health" &&
+          wget -q -O /dev/null
+          "https://$${DATA_DOMAIN}/.well-known/slider-health"
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 30s
+    logging:
+      driver: json-file
+      options:
+        max-size: 10m
+        max-file: "5"
+    stop_grace_period: 30s
+    networks:
+      - edge
+      - backend
+
+networks:
+  edge:
+  backend:
+    internal: true
+
+volumes:
+  slider_data:
+  slider_tls_server:
+  slider_tls_trust:
+  caddy_data:
+  caddy_config:

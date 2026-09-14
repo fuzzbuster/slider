@@ -1,5 +1,9 @@
 .idea
 .vscode
+.env
+client-certs.json
+server-certs.json
+slider-data.tar.gz
 dist
 !server/web/dist/
 !server/web/dist/**

@@ -1,0 +1,83 @@
+{
+	admin off
+	email {$ACME_EMAIL}
+}
+
+(security_headers) {
+	header {
+		-Server
+		Strict-Transport-Security "max-age=31536000; includeSubDomains"
+		X-Content-Type-Options "nosniff"
+		X-Frame-Options "DENY"
+		Referrer-Policy "no-referrer"
+	}
+}
+
+{$CONTROL_DOMAIN} {
+	import security_headers
+
+	log {
+		output stdout
+		format json
+	}
+
+	route {
+		@local_health {
+			path /.well-known/slider-health
+			remote_ip 127.0.0.1 ::1
+		}
+		respond @local_health 200
+
+		@outside_admin_networks not remote_ip {$CONTROL_ALLOWED_CIDRS}
+		respond @outside_admin_networks 403
+
+		@data_handshake {
+			header Upgrade websocket
+			header Sec-WebSocket-Protocol {$SLIDER_PROTOCOL}
+			header_regexp operation Sec-WebSocket-Operation "^(agent|callback|operator)$"
+		}
+		respond @data_handshake 404
+
+		@private_listener path /health /version
+		respond @private_listener 404
+
+		reverse_proxy https://slider:8080 {
+			transport http {
+				tls_server_name slider
+				tls_trust_pool file /tls/ca.crt
+			}
+		}
+	}
+}
+
+{$DATA_DOMAIN} {
+	import security_headers
+
+	log {
+		output stdout
+		format json
+	}
+
+	route {
+		@local_health {
+			path /.well-known/slider-health
+			remote_ip 127.0.0.1 ::1
+		}
+		respond @local_health 200
+
+		@data {
+			path /
+			header Upgrade websocket
+			header Sec-WebSocket-Protocol {$SLIDER_PROTOCOL}
+			header_regexp operation Sec-WebSocket-Operation "^(agent|callback|operator)$"
+		}
+		reverse_proxy @data https://slider:8080 {
+			transport http {
+				tls_server_name slider
+				tls_trust_pool file /tls/ca.crt
+			}
+		}
+
+		respond 404
+	}
+}
